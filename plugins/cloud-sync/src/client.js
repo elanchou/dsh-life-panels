@@ -9,7 +9,7 @@ window.__ModuleLoader__.load({
 
     const zh = {
       dateLocale: 'zh-CN', panel: '云同步', title: '云同步',
-      intro: '把日历、新闻订阅、稍后读、旅行和播客数据同步到你自己的 GitHub 私有仓库。每次同步是一次提交，可以在 GitHub 上查看历史和回滚。',
+      intro: '把日历、新闻订阅、稍后读、旅行、播客、单词和专注数据同步到你自己的 GitHub 私有仓库。每次同步是一次提交，可以在 GitHub 上查看历史和回滚。',
       statFiles: '个数据文件', statLast: '上次同步', statState: '状态', never: '从未', ok: '正常', failed: '出错', off: '未连接',
       connectTitle: '连接 GitHub', token: '访问令牌（Fine-grained token）', tokenPh: 'github_pat_…', tokenKeep: '已保存令牌，留空则继续使用',
       owner: '所有者', ownerPh: '默认是令牌对应的账号', repo: '仓库名', create: '仓库不存在时自动创建（私有）', connect: '连接并同步', cancel: '取消', connecting: '连接中…',
@@ -20,7 +20,7 @@ window.__ModuleLoader__.load({
       repoCard: '同步仓库', viewCommits: '查看提交历史', syncNow: '立即同步', syncing: '同步中…', disconnect: '断开', disconnectConfirm: '断开后本机不再同步，并删除保存的令牌。GitHub 上的数据不会删除。确定吗？',
       auto: '自动同步', everyPre: '每', everySuffix: '分钟一次；本地有修改时约 1.5 分钟后同步', device: '本机：{name}',
       filesCard: '数据文件', logCard: '同步记录', noLog: '还没有同步记录',
-      'file.calendar-reminders': '日历和提醒', 'file.news-feeds': '新闻订阅源', 'file.reading-list': '稍后读', 'file.travel-planner': '旅行计划', 'file.podcasts': '播客订阅和进度',
+      'file.calendar-reminders': '日历和提醒', 'file.news-feeds': '新闻订阅源', 'file.reading-list': '稍后读', 'file.travel-planner': '旅行计划', 'file.podcasts': '播客订阅和进度', 'file.vocabulary': '单词进度', 'file.focus': '专注记录',
       'st.uploaded': '已上传', 'st.downloaded': '已拉取', 'st.merged': '已合并', 'st.unchanged': '无变化', 'st.empty': '无数据', 'st.error': '出错', 'st.pending': '待同步',
       conflicts: '{n} 处冲突已按较新修改处理',
       'reason.manual': '手动', 'reason.startup': '启动', 'reason.interval': '定时', 'reason.local change': '本地修改', 'reason.connect': '连接',
@@ -30,7 +30,7 @@ window.__ModuleLoader__.load({
     };
     const en = {
       dateLocale: 'en-US', panel: 'Cloud sync', title: 'Cloud sync',
-      intro: 'Sync calendar, news feeds, reading list, travel and podcast data to your own private GitHub repository. Each sync is a commit, so history and rollback live on GitHub.',
+      intro: 'Sync calendar, news feeds, reading list, travel, podcast, vocabulary and focus data to your own private GitHub repository. Each sync is a commit, so history and rollback live on GitHub.',
       statFiles: 'data files', statLast: 'last sync', statState: 'status', never: 'never', ok: 'OK', failed: 'error', off: 'not connected',
       connectTitle: 'Connect GitHub', token: 'Fine-grained access token', tokenPh: 'github_pat_…', tokenKeep: 'A token is saved; leave empty to keep it',
       owner: 'Owner', ownerPh: 'defaults to the token account', repo: 'Repository', create: 'Create it (private) if missing', connect: 'Connect and sync', cancel: 'Cancel', connecting: 'Connecting…',
@@ -41,7 +41,7 @@ window.__ModuleLoader__.load({
       repoCard: 'Repository', viewCommits: 'View commits', syncNow: 'Sync now', syncing: 'Syncing…', disconnect: 'Disconnect', disconnectConfirm: 'This device stops syncing and the saved token is removed. Data on GitHub stays. Continue?',
       auto: 'Automatic sync', everyPre: 'every', everySuffix: 'min, and about 1.5 min after a local edit', device: 'This device: {name}',
       filesCard: 'Data files', logCard: 'Sync log', noLog: 'No syncs yet',
-      'file.calendar-reminders': 'Calendar & reminders', 'file.news-feeds': 'News feeds', 'file.reading-list': 'Reading list', 'file.travel-planner': 'Trips', 'file.podcasts': 'Podcasts & progress',
+      'file.calendar-reminders': 'Calendar & reminders', 'file.news-feeds': 'News feeds', 'file.reading-list': 'Reading list', 'file.travel-planner': 'Trips', 'file.podcasts': 'Podcasts & progress', 'file.vocabulary': 'Vocabulary progress', 'file.focus': 'Focus sessions',
       'st.uploaded': 'uploaded', 'st.downloaded': 'pulled', 'st.merged': 'merged', 'st.unchanged': 'unchanged', 'st.empty': 'no data', 'st.error': 'error', 'st.pending': 'pending',
       conflicts: '{n} conflicts resolved by newest edit',
       'reason.manual': 'manual', 'reason.startup': 'startup', 'reason.interval': 'scheduled', 'reason.local change': 'local edit', 'reason.connect': 'connect',

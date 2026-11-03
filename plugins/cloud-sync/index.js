@@ -8,7 +8,7 @@ export const inject = ['tools', 'webServer', 'connection'];
 
 const ROUTE = '/plugin-api/cloud-sync';
 const TOKEN_REF = 'DSH_CLOUD_SYNC_GITHUB_TOKEN';
-const FILES = ['calendar-reminders', 'news-feeds', 'reading-list', 'travel-planner', 'podcasts'];
+const FILES = ['calendar-reminders', 'news-feeds', 'reading-list', 'travel-planner', 'podcasts', 'vocabulary', 'focus'];
 const DIR = path.join(path.dirname(dataFile('x')), '.cloud-sync');
 const STATE_FILE = path.join(DIR, 'state.json');
 const baseFile = (name) => path.join(DIR, 'base', name + '.json');
