@@ -182,6 +182,7 @@ window.__ModuleLoader__.load({
     }
 
     const CSS = [
+      '.cs-root{--lp-amb-b:var(' + BRAND + ');--lp-amb-c:var(' + OK + ')}',
       '.cs-intro{margin:6px 0 0;max-width:560px;font-size:12.5px;line-height:20px;color:' + FG2 + '}',
       '.cs-grid{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:16px;align-items:start}',
       '@media (max-width:860px){.cs-grid{grid-template-columns:1fr}}',
@@ -193,7 +194,7 @@ window.__ModuleLoader__.load({
       '.cs-check input,.cs-auto input{accent-color:var(' + BRAND + ')}',
       '.cs-auto{margin-top:14px;padding-top:14px;border-top:1px solid ' + B1 + '}',
       '.cs-auto b{color:' + FG + ';font-weight:600}',
-      '.cs-interval{height:24px;margin:0 2px;padding:0 4px;border-radius:6px;border:1px solid ' + B2 + ';background:' + L2 + ';color:' + FG + ';font-size:12px}',
+      '.cs-interval{height:24px;margin:0 2px;padding:0 4px;border-radius:6px;border:1px solid var(--lp-glass-edge);' + GLASS_SOFT + ';color:' + FG + ';font-size:12px}',
       '.cs-submit{align-self:flex-start}',
       '.cs-secure{display:flex;align-items:flex-start;gap:6px;margin:0;font-size:11.5px;line-height:17px;color:' + FG2 + '}',
       '.cs-secure svg{margin-top:2px;color:var(' + OK + ')}',
@@ -212,7 +213,7 @@ window.__ModuleLoader__.load({
       '.cs-files{list-style:none;margin:0;padding:0}',
       '.cs-file{display:flex;align-items:center;gap:12px;padding:10px 4px}',
       '.cs-file + .cs-file{border-top:1px solid ' + B1 + '}',
-      '.cs-file-icon{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:10px;background:' + L2 + ';color:' + FG2 + ';flex:none}',
+      '.cs-file-icon{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:10px;' + GLASS_SOFT + ';color:' + FG2 + ';flex:none}',
       '.cs-file-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}',
       '.cs-file-body .cs-sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
       '.cs-file-name{font-size:13px;font-weight:600}',

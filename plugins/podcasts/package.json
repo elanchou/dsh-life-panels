@@ -1,6 +1,6 @@
 {
   "name": "@local/podcasts",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Subscribe to and listen to podcasts: Apple Podcasts search, top chart, RSS subscriptions, an up-next queue and resume playback. The agent can search, subscribe and read show notes to summarize episodes.",
   "private": true,
   "license": "MIT",

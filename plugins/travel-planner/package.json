@@ -1,6 +1,6 @@
 {
   "name": "@local/travel-planner",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "A trip planner: day-by-day itinerary, budget and expenses, a packing list, and a 16-day destination forecast from Open-Meteo. The agent can research guides and write plans into the itinerary.",
   "private": true,
   "license": "MIT",

@@ -3,7 +3,8 @@
  * Builds every plugin under plugins/ into an installable package directory.
  *
  * - Host: copies shared/host/*.js that a plugin imports ('./common.js', './merge.js') next to its index.js.
- * - Client: writes client.js from src/client.js, replacing the `/* @kit *\/` marker with shared/client/kit.js.
+ * - Client: writes client.js from src/client.js, replacing the `/* @kit *\/` marker with shared/client/kit.js
+ *   (itself including shared/client/glass.js), or a lone `/* @glass *\/` marker with glass.js.
  *
  * Generated files are git-ignored. Run `node scripts/build.mjs` after cloning or after editing shared code;
  * `--check` exits non-zero when a generated file is out of date (useful before committing).
@@ -16,8 +17,10 @@ import { spawnSync } from 'node:child_process';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const check = process.argv.includes('--check');
 const KIT_MARKER = '    /* @kit */\n';
+const GLASS_MARKER = '    /* @glass */\n';
 
-const kit = await fs.readFile(path.join(root, 'shared/client/kit.js'), 'utf8');
+const glass = await fs.readFile(path.join(root, 'shared/client/glass.js'), 'utf8');
+const kit = (await fs.readFile(path.join(root, 'shared/client/kit.js'), 'utf8')).replace(GLASS_MARKER, glass);
 const hostShared = (await fs.readdir(path.join(root, 'shared/host'))).filter((f) => f.endsWith('.js'));
 const plugins = (await fs.readdir(path.join(root, 'plugins'), { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name).sort();
 
@@ -50,7 +53,8 @@ for (const name of plugins) {
   for (const s of needed) await emit(path.join(dir, s), await fs.readFile(path.join(root, 'shared/host', s), 'utf8'));
 
   const src = await fs.readFile(path.join(dir, 'src/client.js'), 'utf8');
-  const client = src.includes(KIT_MARKER) ? src.replace(KIT_MARKER, kit) : src;
+  // A panel either takes the whole kit (which contains the glass styles) or only the glass styles.
+  const client = src.includes(KIT_MARKER) ? src.replace(KIT_MARKER, kit) : src.replace(GLASS_MARKER, glass);
   await emit(path.join(dir, 'client.js'), client);
 
   if (!check) {

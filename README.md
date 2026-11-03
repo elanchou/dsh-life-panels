@@ -11,7 +11,7 @@ A set of sidebar plugins for DeepSeek Harness. Each plugin adds a panel to the W
 | [podcasts](plugins/podcasts) | 播客 | `podcasts` | Apple Podcasts directory search and chart, RSS subscriptions, queue, resume playback. |
 | [cloud-sync](plugins/cloud-sync) | 云同步 | `cloud_sync` | Syncs the data of the five plugins above to a private GitHub repository with a per-record three-way merge. |
 
-The UI is Chinese and English, follows the Harness theme tokens, and works in light and dark mode.
+The UI is Chinese and English, follows the Harness theme tokens, and works in light and dark mode. Surfaces use frosted glass (translucent layers with backdrop blur over a soft ambient backdrop); they fall back to opaque layers when the browser lacks `backdrop-filter` or the system asks for reduced transparency.
 
 ## Install
 
@@ -51,6 +51,7 @@ How it works:
 shared/host/common.js     Store, authenticated routes, tool registration, fetch helpers
 shared/host/merge.js      three-way merge and the cross-plugin file lock
 shared/client/kit.js      React helpers, icons and lp-* styles used by every panel
+shared/client/glass.js    frosted-glass tokens (translucent layers, backdrop blur, ambient backdrop)
 plugins/<name>/index.js   Host half: data, route /plugin-api/<name>, agent tool
 plugins/<name>/src/client.js   Web half; `/* @kit */` is replaced by shared/client/kit.js
 scripts/build.mjs         copies shared code into each plugin and assembles client.js
