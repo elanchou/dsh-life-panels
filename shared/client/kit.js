@@ -156,7 +156,7 @@
       '.lp-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:12px}',
       '.lp-card-title{display:flex;align-items:center;gap:8px;margin:0;font-size:14px;line-height:22px;font-weight:650}',
       '.lp-card-title .lp-ico{color:var(' + BRAND + ')}',
-      '.lp-error{display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:10px 14px;border-radius:12px;background:' + tint(ERR, 12) + ';border:1px solid ' + tint(ERR, 22) + ';-webkit-backdrop-filter:var(--lp-glass-blur);backdrop-filter:var(--lp-glass-blur);color:var(' + ERR + ')}',
+      '.lp-error{display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:10px 14px;border-radius:12px;background:' + tint(ERR, 12) + ';border:1px solid ' + tint(ERR, 22) + ';color:var(' + ERR + ')}',
       '.lp-error span{flex:1}',
       '.lp-bar{display:flex;align-items:center;gap:6px;padding:6px 6px 6px 14px;border-radius:14px;' + GLASS + ';transition:border-color .15s,box-shadow .15s}',
       '.lp-bar:focus-within{border-color:var(' + BRAND + ');box-shadow:inset 0 1px 0 var(--lp-glass-hi),0 0 0 3px ' + tint(BRAND, 16) + '}',

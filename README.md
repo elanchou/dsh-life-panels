@@ -11,7 +11,7 @@ A set of sidebar plugins for DeepSeek Harness. Each plugin adds a panel to the W
 | [podcasts](plugins/podcasts) | 播客 | `podcasts` | Apple Podcasts directory search and chart, RSS subscriptions, queue, resume playback. |
 | [cloud-sync](plugins/cloud-sync) | 云同步 | `cloud_sync` | Syncs the data of the five plugins above to a private GitHub repository with a per-record three-way merge. |
 
-The UI is Chinese and English, follows the Harness theme tokens, and works in light and dark mode. Surfaces use frosted glass (translucent layers with backdrop blur over a soft ambient backdrop); they fall back to opaque layers when the browser lacks `backdrop-filter` or the system asks for reduced transparency.
+The UI is Chinese and English, follows the Harness theme tokens, and works in light and dark mode. Surfaces use frosted glass: translucent layers over a soft ambient backdrop, with backdrop blur reserved for the floating bars and toasts that content scrolls beneath (blurring every list card made scrolling stutter); they fall back to opaque layers when the browser lacks `backdrop-filter` or the system asks for reduced transparency.
 
 ## Install
 

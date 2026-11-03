@@ -248,7 +248,7 @@ window.__ModuleLoader__.load({
       '.nf-story.is-lead .nf-actions{top:auto;bottom:auto;top:190px}',
       '.nf-story:hover .nf-actions,.nf-actions:focus-within,.nf-actions .is-on{opacity:1}',
       '@media (hover:none){.nf-actions{opacity:1}}',
-      '.nf-actions .lp-round{background:var(--lp-glass-strong);border:1px solid var(--lp-glass-edge);-webkit-backdrop-filter:var(--lp-glass-blur);backdrop-filter:var(--lp-glass-blur)}',
+      '.nf-actions .lp-round{background:var(--lp-glass-strong);border:1px solid var(--lp-glass-edge)}',
       '.nf-skeleton{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}',
       '.nf-skel{height:112px;border-radius:16px}',
       '.nf-manager{margin-bottom:16px}',
@@ -266,7 +266,7 @@ window.__ModuleLoader__.load({
       '.nf-switch i{position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;transition:transform .15s;box-shadow:0 1px 2px rgba(0,0,0,.25)}',
       '.nf-switch.is-on{background:var(' + BRAND + ')}',
       '.nf-switch.is-on i{transform:translateX(14px)}',
-      '.nf-toast{position:sticky;bottom:20px;margin:0 auto;width:max-content;max-width:min(560px,90%);display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:12px;background:var(--lp-glass-strong);border:1px solid var(--lp-glass-edge);box-shadow:inset 0 1px 0 var(--lp-glass-hi),0 12px 30px -8px ' + tint('--dsw-alias-label-primary', 24) + ';-webkit-backdrop-filter:var(--lp-glass-blur);backdrop-filter:var(--lp-glass-blur);font-size:12.5px;color:var(' + OK + ')}',
+      '.nf-toast{position:sticky;bottom:20px;margin:0 auto;width:max-content;max-width:min(560px,90%);display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:12px;background:var(--lp-glass-strong);border:1px solid var(--lp-glass-edge);box-shadow:inset 0 1px 0 var(--lp-glass-hi),0 12px 30px -8px ' + tint('--dsw-alias-label-primary', 24) + ';' + GLASS_BLUR + ';font-size:12.5px;color:var(' + OK + ')}',
       '.nf-toast span{color:' + FG + ';white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
       '.nf-toast.is-error{color:var(' + ERR + ')}',
     ].join('');

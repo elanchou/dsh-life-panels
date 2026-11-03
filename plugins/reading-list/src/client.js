@@ -297,7 +297,7 @@ window.__ModuleLoader__.load({
       '.rl-card-actions{position:absolute;top:10px;right:10px;display:flex;gap:2px;opacity:0;transition:opacity .12s}',
       '.rl-card:hover .rl-card-actions,.rl-card-actions:focus-within{opacity:1}',
       '@media (hover:none){.rl-card-actions{opacity:1}}',
-      '.rl-card-actions .lp-round{background:var(--lp-glass-strong);border:1px solid var(--lp-glass-edge);-webkit-backdrop-filter:var(--lp-glass-blur);backdrop-filter:var(--lp-glass-blur);text-decoration:none}',
+      '.rl-card-actions .lp-round{background:var(--lp-glass-strong);border:1px solid var(--lp-glass-edge);text-decoration:none}',
       '.rl-reader-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}',
       '.rl-reader-bar a{text-decoration:none}',
       '.rl-reader-progress{flex:1;min-width:120px}',

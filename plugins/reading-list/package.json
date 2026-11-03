@@ -1,6 +1,6 @@
 {
   "name": "@local/reading-list",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "A read-later shelf: save links or text, read the extracted article, track progress, and keep notes and tags. The agent can add, summarize and organize items.",
   "private": true,
   "license": "MIT",
