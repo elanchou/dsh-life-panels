@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Trips">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffa94d"/>
+      <stop offset="1" stop-color="#e8590c"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#bg)"/>
+  <circle cx="46" cy="18" r="6" fill="#fff3bf"/>
+  <path d="M8 50c8-6 16-6 24 0s16 6 24 0v8H8z" fill="#ffffff" opacity=".35"/>
+  <path d="M27.5 33.5L14 29l3-3 15 2 9-9a3.6 3.6 0 0 1 5 5l-9 9 2 15-3 3-4.5-13.5" fill="#ffffff" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>
+  <path d="M15 47l6-6" stroke="#ffffff" stroke-width="3" stroke-linecap="round"/>
+</svg>

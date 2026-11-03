@@ -1,0 +1,42 @@
+{
+  "name": "@local/cloud-sync",
+  "version": "1.0.1",
+  "description": "Sync calendar, news feeds, reading list, travel and podcast data to your private GitHub repository with per-record three-way merging across computers. The token lives in the Harness credential store.",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/elanchou/dsh-life-panels.git",
+    "directory": "plugins/cloud-sync"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "engine.js",
+    "merge.js",
+    "common.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  }
+}

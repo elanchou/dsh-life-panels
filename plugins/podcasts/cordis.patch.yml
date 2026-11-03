@@ -1,0 +1,3 @@
+- insert:
+    - id: podcasts
+      name: '@local/podcasts'

@@ -1,0 +1,3 @@
+- insert:
+    - id: news-feeds
+      name: '@local/news-feeds'
