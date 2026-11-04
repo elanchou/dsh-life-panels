@@ -1,7 +1,43 @@
+import http from 'node:http';
 import { Store, dataFile, registerRoute, registerTool, clip, errorText } from './common.js';
 import { channelVideos, searchChannels, resolveChannel, parseAgo } from './yt.js';
 
 export const inject = ['tools', 'webServer', 'connection'];
+
+// YouTube refuses to play embeds whose page has no http(s) origin (error 153), and the desktop app serves the UI from
+// dsh-app://. The player therefore lives in a tiny static page on 127.0.0.1 that embeds YouTube from its own origin.
+const PLAYER_HTML = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin"><title>Player</title>
+<style>html,body{margin:0;height:100%;background:#000}iframe{position:absolute;inset:0;width:100%;height:100%;border:0}</style></head>
+<body><script>
+(function () {
+  var p = new URLSearchParams(location.search), v = p.get('v') || '';
+  if (!/^[\\w-]{11}$/.test(v)) return;
+  var f = document.createElement('iframe');
+  f.src = 'https://www.youtube-nocookie.com/embed/' + v + '?autoplay=1&rel=0&playsinline=1&hl=' + encodeURIComponent((p.get('hl') || 'en').slice(0, 8));
+  f.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write';
+  f.allowFullscreen = true; f.referrerPolicy = 'strict-origin-when-cross-origin';
+  document.body.appendChild(f);
+})();
+</script></body></html>`;
+
+function startPlayerServer() {
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url || '/', 'http://127.0.0.1');
+    if (req.method !== 'GET' || url.pathname !== '/') { res.writeHead(404); res.end(); return; }
+    res.writeHead(200, {
+      'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store',
+      'referrer-policy': 'strict-origin-when-cross-origin', 'x-content-type-options': 'nosniff',
+    });
+    res.end(PLAYER_HTML);
+  });
+  const ready = new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', () => resolve(server.address().port));
+  });
+  return { server, ready };
+}
 
 const ROUTE = '/plugin-api/youtube';
 const FEED_TTL = 30 * 60 * 1000;
@@ -23,6 +59,9 @@ async function mapLimit(items, limit, fn) {
 export function apply(ctx) {
   // watched is a map keyed by video id so two computers merge marks per video.
   const store = new Store(dataFile('youtube'), () => ({ version: 1, channels: [], watched: {} }));
+  const player = startPlayerServer();
+  player.ready.catch(() => {});
+  ctx.effect(() => () => { player.server.close(); }, 'youtube: player page');
   const feeds = new Map(); // channelId -> { at, error, videos, pending }
   const firstSeen = new Map(); // videoId -> estimated publish ms; relative times only get coarser, so keep the earliest estimate.
 
@@ -108,6 +147,9 @@ export function apply(ctx) {
     const data = await store.load();
     const action = input.action || 'latest';
 
+    if (action === 'player') {
+      try { return { ok: true, base: 'http://127.0.0.1:' + await player.ready }; } catch (error) { return { ok: false, error: 'Player page unavailable: ' + errorText(error) }; }
+    }
     if (action === 'search') {
       const q = String(input.query || '').trim();
       if (!q) return { ok: false, error: 'query is required' };

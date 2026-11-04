@@ -1,6 +1,6 @@
 {
   "name": "@local/youtube",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Follow YouTube channels without a Google account: subscribe by link, @handle or search, see the latest uploads across channels, mark watched, and play in an embedded player.",
   "private": true,
   "license": "MIT",

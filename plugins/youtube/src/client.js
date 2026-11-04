@@ -85,14 +85,21 @@ window.__ModuleLoader__.load({
         window.addEventListener('keydown', onKey);
         return () => window.removeEventListener('keydown', onKey);
       }, [onClose]);
-      const src = 'https://www.youtube-nocookie.com/embed/' + encodeURIComponent(v.id) + '?autoplay=1&rel=0&playsinline=1&hl=' + (t('dateLocale') === 'zh-CN' ? 'zh-CN' : 'en');
+      const [base, setBase] = useState(null);
+      const [failed, setFailed] = useState(null);
+      useEffect(() => {
+        let live = true;
+        call({ action: 'player' }).then((r) => { if (live) setBase(r.base); }).catch((e) => { if (live) setFailed(e.message); });
+        return () => { live = false; };
+      }, []);
+      const src = base ? base + '/?v=' + encodeURIComponent(v.id) + '&hl=' + (t('dateLocale') === 'zh-CN' ? 'zh-CN' : 'en') : null;
       return h('div', { className: 'yt-overlay', role: 'dialog', 'aria-modal': true, 'aria-label': v.title, onClick: (e) => { if (e.target === e.currentTarget) onClose(); } },
         h('div', { className: 'yt-player' },
           h('div', { className: 'yt-frame' },
-            h('iframe', {
+            src ? h('iframe', {
               src, title: v.title, allow: 'autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write',
-              allowFullScreen: true, referrerPolicy: 'strict-origin-when-cross-origin', frameBorder: 0,
-            })),
+              allowFullScreen: true, frameBorder: 0,
+            }) : h('div', { className: 'yt-frame-msg' }, failed ? t('loadFailed', { error: failed }) : h(Icon, { name: 'refresh', size: 22, className: 'lp-spin' }))),
           h('div', { className: 'yt-player-bar' },
             h(Avatar, { src: v.channelAvatar, name: v.channel, size: 34 }),
             h('div', { className: 'yt-player-text' },
@@ -307,6 +314,7 @@ window.__ModuleLoader__.load({
       '@keyframes yt-fade{from{opacity:0}}',
       '.yt-player{width:min(1100px,100%);max-height:100%;display:flex;flex-direction:column;border-radius:18px;overflow:hidden;background:var(--dsw-alias-bg-layer-1);box-shadow:0 30px 80px -20px rgba(0,0,0,.6)}',
       '.yt-frame{position:relative;width:100%;aspect-ratio:16/9;max-height:calc(100vh - 170px);background:#000}',
+      '.yt-frame-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;padding:20px;text-align:center}',
       '.yt-frame iframe{position:absolute;inset:0;width:100%;height:100%;border:0}',
       '.yt-player-bar{display:flex;align-items:center;gap:10px;padding:12px 14px}',
       '.yt-player-text{flex:1;min-width:0}',
