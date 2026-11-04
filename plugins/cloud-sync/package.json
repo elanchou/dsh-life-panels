@@ -1,6 +1,6 @@
 {
   "name": "@local/cloud-sync",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Sync calendar, news feeds, reading list, travel, podcast, vocabulary and focus data to your private GitHub repository with per-record three-way merging across computers. The token lives in the Harness credential store.",
   "private": true,
   "license": "MIT",

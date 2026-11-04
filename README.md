@@ -11,6 +11,7 @@ A set of sidebar plugins for DeepSeek Harness. Each plugin adds a panel to the W
 | [podcasts](plugins/podcasts) | 播客 | `podcasts` | Apple Podcasts directory search and chart, RSS subscriptions, queue, resume playback. |
 | [vocabulary](plugins/vocabulary) | 单词 | `vocabulary` | IELTS and TOEFL word books with spaced repetition (SM-2 style, four grades), daily new-word quota, pronunciation, a personal word list and study history. |
 | [focus](plugins/focus) | 专注 | `focus` | Pomodoro timer with white noise synthesized in the browser (rain, ocean, campfire, pink, brown, white). Noise plays during focus and stops on breaks. Daily, weekly and per-task stats. |
+| [youtube](plugins/youtube) | YouTube | `youtube` | Follow channels without a Google account: subscribe by link, @handle or channel search, see the latest uploads across channels, mark watched, and play in an embedded player. Uses the same web JSON endpoints youtube.com calls, so a YouTube redesign can break it; publish times are estimated from labels like "3 days ago". |
 | [cloud-sync](plugins/cloud-sync) | 云同步 | `cloud_sync` | Syncs the data of the plugins above to a private GitHub repository with a per-record three-way merge. |
 
 The UI is Chinese and English, follows the Harness theme tokens, and works in light and dark mode. Surfaces use frosted glass: translucent layers over a soft ambient backdrop, with backdrop blur reserved for the floating bars and toasts that content scrolls beneath (blurring every list card made scrolling stutter); they fall back to opaque layers when the browser lacks `backdrop-filter` or the system asks for reduced transparency.
@@ -31,7 +32,7 @@ After pulling updates, run `npm run build` again and reinstall (or bump the vers
 
 ## Data
 
-Each plugin stores one JSON file in `$DSH_HOME/plugin-data/` (`calendar-reminders.json`, `news-feeds.json`, `reading-list.json`, `travel-planner.json`, `podcasts.json`, `vocabulary.json`, `focus.json`). Writes are atomic. If another writer replaces a file (for example cloud-sync), the plugin re-reads it and merges its own unsaved changes instead of overwriting.
+Each plugin stores one JSON file in `$DSH_HOME/plugin-data/` (`calendar-reminders.json`, `news-feeds.json`, `reading-list.json`, `travel-planner.json`, `podcasts.json`, `vocabulary.json`, `focus.json`, `youtube.json`). Writes are atomic. If another writer replaces a file (for example cloud-sync), the plugin re-reads it and merges its own unsaved changes instead of overwriting.
 
 The vocabulary word books in `plugins/vocabulary/books/` are derived from [ECDICT](https://github.com/skywind3000/ECDICT) (MIT): the entries tagged `ielts` (5,040 words) and `toefl` (6,974 words), with phonetics and up to three lines of Chinese meaning. Exam words that are not on the Chinese middle/high-school lists come first, each group ordered by corpus frequency. See `books/ECDICT-LICENSE`.
 

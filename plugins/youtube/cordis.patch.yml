@@ -1,0 +1,3 @@
+- insert:
+    - id: youtube
+      name: '@local/youtube'
