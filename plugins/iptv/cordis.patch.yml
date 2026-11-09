@@ -1,0 +1,3 @@
+- insert:
+    - id: iptv
+      name: '@local/iptv'

@@ -9,7 +9,7 @@ window.__ModuleLoader__.load({
 
     const zh = {
       dateLocale: 'zh-CN', panel: '播客', title: '播客',
-      tabLatest: '最新', tabQueue: '播放队列', tabShows: '我的订阅', tabDiscover: '发现',
+      tabPicks: '今日推荐', tabLatest: '最新', tabQueue: '播放队列', tabShows: '我的订阅', tabDiscover: '发现',
       statShows: '个订阅', statNew: '本周新节目', statQueue: '待播',
       play: '播放', pause: '暂停', back15: '后退 15 秒', fwd30: '前进 30 秒', speed: '倍速',
       queueAdd: '加入队列', queued: '已在队列', queueRemove: '移出队列', markPlayed: '标为已听', markUnplayed: '标为未听',
@@ -20,11 +20,13 @@ window.__ModuleLoader__.load({
       noResults: '没有找到相关播客', allShows: '全部节目', unplayedOnly: '只看未听', refresh: '刷新',
       justNow: '刚刚', minutesAgo: '{n} 分钟前', hoursAgo: '{n} 小时前', daysAgo: '{n} 天前',
       loadFailed: '加载失败：{error}', saveFailed: '操作失败：{error}', playFailed: '无法播放：{error}', retry: '重试', loading: '加载中…',
+      picksTitle: 'AI 为你挑选的 3 期节目', picksSub: '根据你的订阅和收听记录，每天更新一次', picksRegen: '重新推荐', picksBusy: 'AI 正在挑选…', picksEmpty: '暂时没有可推荐的新节目', picksNoShows: '先订阅几个节目，AI 才能帮你挑', picksUpdated: '{model} · {time} 生成',
+      importApple: '从 Apple 播客导入订阅', importing: '正在导入 {done}/{total}…', importDone: '已导入 {added} 个，已存在 {skipped} 个，失败 {failed} 个', importNone: 'Apple 播客里没有订阅', importFailedList: '无法导入的节目（订阅源失效）',
       feedErrors: '{n} 个订阅源暂时无法更新', hint: '离开此面板后会继续播放。可以在对话里说“总结一下最新一期晚点聊”',
     };
     const en = {
       dateLocale: 'en-US', panel: 'Podcasts', title: 'Podcasts',
-      tabLatest: 'Latest', tabQueue: 'Up next', tabShows: 'Library', tabDiscover: 'Discover',
+      tabPicks: 'Today', tabLatest: 'Latest', tabQueue: 'Up next', tabShows: 'Library', tabDiscover: 'Discover',
       statShows: 'shows', statNew: 'new this week', statQueue: 'queued',
       play: 'Play', pause: 'Pause', back15: 'Back 15s', fwd30: 'Forward 30s', speed: 'Speed',
       queueAdd: 'Add to queue', queued: 'Queued', queueRemove: 'Remove from queue', markPlayed: 'Mark played', markUnplayed: 'Mark unplayed',
@@ -35,6 +37,8 @@ window.__ModuleLoader__.load({
       noResults: 'No podcasts found', allShows: 'All shows', unplayedOnly: 'Unplayed only', refresh: 'Refresh',
       justNow: 'just now', minutesAgo: '{n}m ago', hoursAgo: '{n}h ago', daysAgo: '{n}d ago',
       loadFailed: 'Failed to load: {error}', saveFailed: 'Action failed: {error}', playFailed: 'Cannot play: {error}', retry: 'Retry', loading: 'Loading…',
+      picksTitle: 'Three episodes picked for you', picksSub: 'Based on your subscriptions and listening, refreshed daily', picksRegen: 'Pick again', picksBusy: 'Choosing episodes…', picksEmpty: 'No new episodes to recommend yet', picksNoShows: 'Subscribe to a few shows first', picksUpdated: '{model} · generated {time}',
+      importApple: 'Import from Apple Podcasts', importing: 'Importing {done}/{total}…', importDone: '{added} added, {skipped} already there, {failed} failed', importNone: 'No subscriptions in Apple Podcasts', importFailedList: 'Could not import (dead feeds)',
       feedErrors: '{n} feeds could not be refreshed', hint: 'Playback continues when you leave this panel. Ask in chat: “Summarize the latest LateTalk episode”',
     };
 
@@ -144,6 +148,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'pc-ep-body' },
             h('div', { className: 'pc-ep-meta' }, meta.join(' · ')),
             h('button', { type: 'button', className: 'pc-ep-title', onClick: toggleNotes, 'aria-expanded': open }, ep.title),
+            ep.reason ? h('div', { className: 'pc-ep-reason' }, h(Icon, { name: 'sparkle', size: 12 }), ep.reason) : null,
             pct > 0 && !ep.played ? h('div', { className: 'lp-progress pc-ep-progress' }, h('i', { style: { width: pct + '%' } })) : null),
           h('div', { className: 'pc-ep-actions' },
             h('button', {
@@ -198,6 +203,35 @@ window.__ModuleLoader__.load({
         h('button', { type: 'button', className: 'lp-ghost pc-speed', title: t('speed'), onClick: cycle }, p.speed + '×'));
     }
 
+    function Picks(props) {
+      const { t, hasShows, onChanged, onError } = props;
+      const [data, setData] = useState(null);
+      const [busy, setBusy] = useState(false);
+      const alive = useRef(true);
+      const fetchPicks = useCallback(async (refresh) => {
+        setBusy(true);
+        try { const r = await call({ action: 'picks', refresh: !!refresh }); if (alive.current) setData(r); }
+        catch (err) { if (alive.current) { onError(err.message); setData((d) => d || { episodes: [] }); } }
+        finally { if (alive.current) setBusy(false); }
+      }, [onError]);
+      useEffect(() => { alive.current = true; if (hasShows) fetchPicks(false); else setData({ episodes: [] }); return () => { alive.current = false; }; }, [hasShows]);
+      const eps = data && data.episodes ? data.episodes : [];
+      let time = '';
+      if (data && data.generatedAt) { try { time = new Date(data.generatedAt).toLocaleTimeString(safeLocale(t), { hour: '2-digit', minute: '2-digit' }); } catch { time = ''; } }
+      return h('div', null,
+        h('div', { className: 'pc-picks-head' },
+          h('div', null,
+            h('h2', { className: 'pc-h2 pc-picks-title' }, h(Icon, { name: 'sparkle', size: 15 }), t('picksTitle')),
+            h('div', { className: 'pc-picks-sub' }, t('picksSub') + (data && data.model && time ? ' · ' + t('picksUpdated', { model: data.model.split('/').pop(), time }) : ''))),
+          hasShows ? h('button', { type: 'button', className: 'lp-ghost', disabled: busy, onClick: () => fetchPicks(true) },
+            h(Icon, { name: 'refresh', size: 14, className: busy ? 'lp-spin' : '' }), t('picksRegen')) : null),
+        data === null || (busy && !eps.length) ? h('div', { className: 'lp-card' }, h('div', { className: 'lp-muted pc-picks-busy' }, h(Icon, { name: 'refresh', size: 14, className: 'lp-spin' }), t('picksBusy')),
+          [0, 1, 2].map((i) => h('div', { key: i, className: 'lp-skel', style: { height: 56, margin: '8px 0' } })))
+          : !hasShows ? h('div', { className: 'lp-card' }, h(Empty, { icon: 'mic', text: t('picksNoShows') }))
+            : !eps.length ? h('div', { className: 'lp-card' }, h(Empty, { icon: 'headphones', text: t('picksEmpty') }))
+              : h('div', { className: 'lp-card pc-list' }, h('ul', { className: 'pc-eps' }, eps.map((ep) => h(Episode, { key: ep.id, ep, t, onChanged: () => { onChanged(); fetchPicks(false); }, onError, showShow: true })))));
+    }
+
     function ShowTile(props) {
       const { r, t, onSubscribe, busy } = props;
       return h('div', { className: 'pc-tile' },
@@ -206,6 +240,46 @@ window.__ModuleLoader__.load({
         h('div', { className: 'pc-tile-sub' }, [r.author, r.genre].filter(Boolean).join(' · ')),
         r.subscribed ? h('span', { className: 'lp-pill tone-success' }, h(Icon, { name: 'check', size: 11 }), t('subscribed'))
           : h('button', { type: 'button', className: 'lp-ghost pc-tile-btn', disabled: busy, onClick: () => onSubscribe(r) }, h(Icon, { name: 'plus', size: 13 }), t('subscribe')));
+    }
+
+    function ImportApple(props) {
+      const { t, onChanged, onError } = props;
+      const [job, setJob] = useState(null);
+      const [open, setOpen] = useState(false);
+      const timer = useRef(null);
+      const stop = () => { if (timer.current) { clearInterval(timer.current); timer.current = null; } };
+      const poll = useCallback(() => {
+        stop();
+        timer.current = setInterval(async () => {
+          try {
+            const r = await call({ action: 'import_status' });
+            setJob(r.job);
+            if (!r.job || !r.job.running) { stop(); onChanged(); }
+          } catch (err) { stop(); onError(err.message); }
+        }, 1000);
+      }, [onChanged, onError]);
+      useEffect(() => {
+        call({ action: 'import_status' }).then((r) => { if (r.job) { setJob(r.job); if (r.job.running) poll(); } }).catch(() => {});
+        return stop;
+      }, []);
+      const start = async () => {
+        try { const r = await call({ action: 'import_apple' }); setJob(r.job); setOpen(false); if (r.job.running) poll(); else onChanged(); }
+        catch (err) { onError(err.message); }
+      };
+      const running = !!(job && job.running);
+      const failed = job && job.failed ? job.failed : [];
+      let status = null;
+      if (job && running) status = t('importing', { done: job.done, total: job.total });
+      else if (job && !job.total) status = t('importNone');
+      else if (job) status = t('importDone', { added: job.added, skipped: job.skipped, failed: failed.length });
+      return h('div', { className: 'pc-import' },
+        h('div', { className: 'pc-import-row' },
+          h('button', { type: 'button', className: 'lp-primary', disabled: running, onClick: start },
+            h(Icon, { name: running ? 'refresh' : 'plus', size: 14, className: running ? 'lp-spin' : '' }), t('importApple')),
+          status ? h('span', { className: 'pc-import-status' }, status) : null,
+          !running && failed.length ? h('button', { type: 'button', className: 'lp-ghost', onClick: () => setOpen(!open) }, t('importFailedList') + ' (' + failed.length + ')') : null),
+        running && job.total ? h('div', { className: 'pc-import-bar' }, h('span', { style: { width: Math.round(100 * job.done / job.total) + '%' } })) : null,
+        open && failed.length ? h('ul', { className: 'pc-import-fails' }, failed.map((f, i) => h('li', { key: i, title: f.feedUrl }, h('b', null, f.title), ' · ', f.error))) : null);
     }
 
     function Discover(props) {
@@ -231,6 +305,7 @@ window.__ModuleLoader__.load({
       };
       const list = results ? mark(results) : mark(top);
       return h('div', null,
+        h(ImportApple, { t, onChanged, onError }),
         h('form', { className: 'lp-bar pc-search', onSubmit: search },
           h('span', { className: 'lp-bar-icon' }, h(Icon, { name: 'search', size: 18 })),
           h('input', { className: 'lp-bar-input', value: q, onChange: (e) => setQ(e.target.value), placeholder: t('searchPh'), 'aria-label': t('searchPh') }),
@@ -247,7 +322,7 @@ window.__ModuleLoader__.load({
 
     function Panel(props) {
       const t = props.t || ((k) => k);
-      const [tab, setTab] = useState('latest');
+      const [tab, setTab] = useState('picks');
       const [shows, setShows] = useState(null);
       const [latest, setLatest] = useState(null);
       const [queue, setQueue] = useState(null);
@@ -289,7 +364,8 @@ window.__ModuleLoader__.load({
       const epList = (list, showShow) => h('ul', { className: 'pc-eps' }, list.map((ep) => h(Episode, { key: ep.id, ep, t, onChanged: changed, onError, showShow })));
 
       let body;
-      if (tab === 'discover') body = h(Discover, { t, shows: showsList, onChanged: changed, onError });
+      if (tab === 'picks') body = h(Picks, { t, hasShows: shows === null ? true : showsList.length > 0, onChanged: changed, onError });
+      else if (tab === 'discover') body = h(Discover, { t, shows: showsList, onChanged: changed, onError });
       else if (tab === 'queue') {
         body = queue === null ? h('div', { className: 'lp-loading' }, t('loading'))
           : !queue.length ? h('div', { className: 'lp-card' }, h(Empty, { icon: 'list', text: t('emptyQueue') }))
@@ -332,6 +408,7 @@ window.__ModuleLoader__.load({
           h(ErrorBar, { error, onRetry: () => load(true), retryLabel: t('retry'), onClose: () => setError(null) }),
           h('div', { className: 'pc-tabs' }, h(Tabs, {
             value: tab, onChange: setTab, items: [
+              { id: 'picks', label: t('tabPicks') },
               { id: 'latest', label: t('tabLatest') },
               { id: 'queue', label: t('tabQueue'), count: (queue || []).length },
               { id: 'shows', label: t('tabShows'), count: showsList.length },
@@ -399,6 +476,19 @@ window.__ModuleLoader__.load({
       '.pc-show-del{position:absolute;top:10px;right:10px;opacity:0}',
       '.pc-show:hover .pc-show-del,.pc-show-del:focus-visible{opacity:1}',
       '.pc-search{margin-bottom:8px}',
+      '.pc-picks-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px}',
+      '.pc-picks-title{display:flex;align-items:center;gap:6px;margin:0}',
+      '.pc-picks-sub{margin-top:3px;font-size:12px;color:' + FG2 + '}',
+      '.pc-picks-busy{display:flex;align-items:center;gap:8px;padding:6px 2px}',
+      '.pc-ep-reason{display:flex;align-items:center;gap:5px;margin-top:3px;font-size:12px;color:var(' + BRAND + ')}',
+      '.pc-import{margin-bottom:14px}',
+      '.pc-import-row{display:flex;align-items:center;flex-wrap:wrap;gap:10px}',
+      '.pc-import-status{font-size:12.5px;color:' + FG2 + ';font-variant-numeric:tabular-nums}',
+      '.pc-import-bar{height:3px;margin-top:10px;border-radius:2px;background:var(--lp-glass-edge);overflow:hidden}',
+      '.pc-import-bar span{display:block;height:100%;background:var(' + BRAND + ');transition:width .3s}',
+      '.pc-import-fails{list-style:none;margin:10px 0 0;padding:0;max-height:200px;overflow:auto;font-size:12px;color:' + FG2 + '}',
+      '.pc-import-fails li{padding:3px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.pc-import-fails b{color:' + FG + ';font-weight:550}',
       '.pc-feed{display:flex;align-items:center;gap:8px;padding:0 6px 0 14px;margin-bottom:22px;color:' + FG2 + '}',
       '.pc-feed-input{flex:1;min-width:0;height:30px;border:0;outline:0;background:transparent;color:' + FG + ';font-size:12.5px}',
       '.pc-feed-input::placeholder{color:' + FG2 + '}',

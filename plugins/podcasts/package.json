@@ -21,6 +21,7 @@
     "merge.js",
     "common.js",
     "feed.js",
+    "picks.js",
     "client.js",
     "cordis.patch.yml",
     "locale/*.json",

@@ -1,11 +1,44 @@
+import { execFile } from 'node:child_process';
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { Store, dataFile, registerRoute, registerTool, fetchText, clip, errorText, uid } from './common.js';
 import { parsePodcast, notesText, shortHash } from './feed.js';
+import { createPicks } from './picks.js';
 
 export const inject = ['tools', 'webServer', 'connection'];
 
 const ROUTE = '/plugin-api/podcasts';
 const FEED_TTL = 30 * 60 * 1000;
 const COUNTRY = 'cn';
+const APPLE_DB = path.join(os.homedir(), 'Library/Group Containers/243LU875E5.groups.com.apple.podcasts/Documents/MTLibrary.sqlite');
+const IMPORT_CONCURRENCY = 6;
+
+const feedKey = (url) => String(url || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+
+/** Read the shows followed in the macOS Podcasts app. The database is copied first so the live WAL is never touched. */
+async function readAppleSubscriptions() {
+  if (process.platform !== 'darwin') throw new Error('Importing from Apple Podcasts is only available on macOS');
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'dsh-applepodcasts-'));
+  try {
+    try {
+      for (const ext of ['', '-wal', '-shm']) {
+        await fs.copyFile(APPLE_DB + ext, path.join(dir, 'lib.sqlite' + ext)).catch((e) => { if (ext === '' || (e && e.code !== 'ENOENT')) throw e; });
+      }
+    } catch (e) {
+      if (e && e.code === 'ENOENT') throw new Error('Apple Podcasts library not found. Open the Podcasts app once and sign in.');
+      throw new Error('Cannot read the Apple Podcasts library (' + (e && e.code ? e.code : errorText(e)) + '). Allow DeepSeek Harness under System Settings > Privacy & Security > Full Disk Access / Files and Folders.');
+    }
+    const sql = "SELECT ZSTORECOLLECTIONID AS storeId, ZTITLE AS title, ZAUTHOR AS author, ZFEEDURL AS feedUrl FROM ZMTPODCAST WHERE ZSUBSCRIBED = 1 ORDER BY ZADDEDDATE";
+    const out = await new Promise((resolve, reject) => {
+      execFile('/usr/bin/sqlite3', ['-readonly', '-json', path.join(dir, 'lib.sqlite'), sql], { maxBuffer: 16 * 1024 * 1024, timeout: 20000 },
+        (err, stdout, stderr) => (err ? reject(new Error('sqlite3 failed: ' + clip(stderr || errorText(err), 200))) : resolve(stdout)));
+    });
+    return out.trim() ? JSON.parse(out) : [];
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
 
 async function itunes(pathAndQuery) {
   const { text } = await fetchText('https://itunes.apple.com/' + pathAndQuery, { timeoutMs: 10000 });
@@ -94,6 +127,60 @@ export function apply(ctx) {
     return { ok: true, show, episodes: feed.episodes.length };
   }
 
+  const picks = createPicks({ ctx, store, loadFeed, view });
+  picks.startDaily();
+
+  let importJob = null;
+
+  async function importOne(row, data) {
+    const known = () => new Set(data.shows.map((x) => feedKey(x.feedUrl)));
+    const tryUrl = async (url) => {
+      if (known().has(feedKey(url))) return { ok: true, duplicate: true };
+      return subscribe(data, { feedUrl: url });
+    };
+    let result = row.feedUrl ? await tryUrl(row.feedUrl) : { ok: false, error: 'no feed URL' };
+    if (!result.ok && Number(row.storeId) > 0) {
+      // The stored feed moved or died: ask the Apple directory for the current one.
+      try {
+        const r = await itunes('lookup?entity=podcast&id=' + encodeURIComponent(String(row.storeId)));
+        const hit = (r.results || []).find((x) => x.feedUrl && feedKey(x.feedUrl) !== feedKey(row.feedUrl));
+        if (hit) {
+          const second = await tryUrl(hit.feedUrl);
+          if (second.ok) result = { ...second, moved: true };
+        }
+      } catch { /* keep the first error */ }
+    }
+    return result;
+  }
+
+  async function startImport() {
+    if (importJob && importJob.running) return { ok: true, started: false, job: importJob };
+    const rows = (await readAppleSubscriptions()).filter((r) => r.feedUrl || Number(r.storeId) > 0);
+    const job = { running: true, total: rows.length, done: 0, added: 0, skipped: 0, moved: 0, failed: [], startedAt: new Date().toISOString(), finishedAt: null };
+    importJob = job;
+    (async () => {
+      const queue = rows.slice();
+      const worker = async () => {
+        for (let row = queue.shift(); row; row = queue.shift()) {
+          try {
+            const data = await store.load();
+            const r = await importOne(row, data);
+            if (r.ok && r.duplicate) job.skipped++;
+            else if (r.ok) { job.added++; if (r.moved) job.moved++; }
+            else job.failed.push({ title: row.title || row.feedUrl, feedUrl: row.feedUrl || '', error: r.error });
+          } catch (error) {
+            job.failed.push({ title: row.title || row.feedUrl, feedUrl: row.feedUrl || '', error: errorText(error) });
+          }
+          job.done++;
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(IMPORT_CONCURRENCY, rows.length) }, worker));
+      job.running = false;
+      job.finishedAt = new Date().toISOString();
+    })();
+    return { ok: true, started: true, job };
+  }
+
   async function run(input) {
     const data = await store.load();
     const action = input.action || 'latest';
@@ -117,6 +204,9 @@ export function apply(ctx) {
         })) };
       }
       case 'subscribe': return subscribe(data, input);
+      case 'picks': return picks.get(!!input.refresh);
+      case 'import_apple': return startImport();
+      case 'import_status': return { ok: true, job: importJob };
       case 'shows': {
         return { ok: true, shows: data.shows.map((s) => { const f = feeds.get(s.id); return { ...s, error: f ? f.error : null, latestAt: f && f.episodes && f.episodes[0] ? f.episodes[0].publishedAt : null }; }) };
       }
@@ -191,11 +281,11 @@ export function apply(ctx) {
   registerRoute(ctx, ROUTE, run, 'podcasts');
   registerTool(ctx, {
     name: 'podcasts',
-    description: 'Podcast subscriptions in the sidebar Podcast panel (playback happens in the panel). Actions: search (query; Apple Podcasts directory, China store), top (chart), subscribe (itunesId from search/top, or feedUrl), shows, unsubscribe (id), latest (new episodes across subscriptions; optional showId, unplayed, query, limit, refresh), episode (id; includes shownotes text for summarizing), progress (id plus position seconds, duration, played), queue, queue_add (id, next=true to play next), queue_remove (id).',
+    description: 'Podcast subscriptions in the sidebar Podcast panel (playback happens in the panel). Actions: search (query; Apple Podcasts directory, China store), top (chart), subscribe (itunesId from search/top, or feedUrl), picks (the 3 AI-recommended episodes for today episodes, cached per day; refresh=true regenerates), import_apple (import every show followed in the macOS Podcasts app; runs in the background), import_status (progress and failures of that import), shows, unsubscribe (id), latest (new episodes across subscriptions; optional showId, unplayed, query, limit, refresh), episode (id; includes shownotes text for summarizing), progress (id plus position seconds, duration, played), queue, queue_add (id, next=true to play next), queue_remove (id).',
     parameters: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['search', 'top', 'subscribe', 'shows', 'unsubscribe', 'latest', 'episode', 'progress', 'queue', 'queue_add', 'queue_remove'], description: 'Operation to perform.' },
+        action: { type: 'string', enum: ['search', 'top', 'subscribe', 'picks', 'import_apple', 'import_status', 'shows', 'unsubscribe', 'latest', 'episode', 'progress', 'queue', 'queue_add', 'queue_remove'], description: 'Operation to perform.' },
         query: { type: 'string', description: 'search: directory query. latest: keyword filter.' },
         itunesId: { type: 'number', description: 'subscribe: Apple Podcasts collection id.' },
         feedUrl: { type: 'string', description: 'subscribe: podcast RSS URL.' },
@@ -203,7 +293,7 @@ export function apply(ctx) {
         showId: { type: 'string', description: 'latest: only this show.' },
         unplayed: { type: 'boolean', description: 'latest: hide played episodes.' },
         limit: { type: 'number', description: 'latest: maximum episodes, default 60.' },
-        refresh: { type: 'boolean', description: 'latest: refetch feeds instead of the 30-minute cache.' },
+        refresh: { type: 'boolean', description: 'latest: refetch feeds instead of the 30-minute cache. picks: regenerate today\'s picks.' },
         position: { type: 'number', description: 'progress: playback position in seconds.' },
         duration: { type: 'number', description: 'progress: episode length in seconds.' },
         played: { type: 'boolean', description: 'progress: mark played or unplayed.' },
