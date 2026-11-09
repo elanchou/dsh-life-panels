@@ -23,6 +23,7 @@ window.__ModuleLoader__.load({
       reload: '刷新', done: '完成', fullscreen: '全屏', exitFullscreen: '退出全屏', pip: '画中画', mute: '静音', unmute: '取消静音',
       play: '播放', pause: '暂停', volume: '音量', live: '直播', guide: '频道列表', closeGuide: '收起频道列表', settings: '播放列表与代理',
       shortcuts: '↑↓ 换台 · 空格 暂停 · F 全屏 · M 静音 · L 列表',
+      inPip: '画中画播放中', exitPip: '退出画中画', backToTv: '回到电视', closePlayer: '关闭播放', miniDrag: '拖动小窗',
       proxy: '网络代理', proxyHint: '直播流和播放列表从本机发出请求，可走 HTTP / HTTPS / SOCKS5 代理',
       proxyUrl: '代理地址，如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080', proxyOn: '启用代理', proxyLists: '播放列表也走代理',
       proxySave: '保存', proxyTest: '测试', proxyTesting: '测试中…', proxySaved: '已保存代理设置', proxyOk: '代理可用（{via}，{ms} ms）',
@@ -41,6 +42,7 @@ window.__ModuleLoader__.load({
       reload: 'Refresh', done: 'Done', fullscreen: 'Fullscreen', exitFullscreen: 'Exit fullscreen', pip: 'Picture in picture', mute: 'Mute', unmute: 'Unmute',
       play: 'Play', pause: 'Pause', volume: 'Volume', live: 'Live', guide: 'Channel guide', closeGuide: 'Hide the guide', settings: 'Playlists and proxy',
       shortcuts: '↑↓ channel · Space pause · F fullscreen · M mute · L guide',
+      inPip: 'In picture in picture', exitPip: 'Exit picture in picture', backToTv: 'Back to TV', closePlayer: 'Stop playback', miniDrag: 'Drag the mini player',
       proxy: 'Network proxy', proxyHint: 'Streams and playlists are requested from this computer and can go through an HTTP, HTTPS or SOCKS5 proxy',
       proxyUrl: 'Proxy address, e.g. http://127.0.0.1:7890 or socks5://127.0.0.1:1080', proxyOn: 'Use proxy', proxyLists: 'Also for playlists',
       proxySave: 'Save', proxyTest: 'Test', proxyTesting: 'Testing…', proxySaved: 'Proxy settings saved', proxyOk: 'Proxy works ({via}, {ms} ms)',
@@ -83,65 +85,144 @@ window.__ModuleLoader__.load({
     function hue(name) { let x = 0; for (const ch of String(name)) x = (x * 31 + ch.codePointAt(0)) % 360; return x; }
     const isTyping = (el) => !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
 
-    /** Attach hls.js (or native HLS) to the video for one channel; reports idle | loading | playing | error. */
-    function usePlayback(videoRef, channel, attempt, t) {
-      const [state, setState] = useState('idle');
-      const [error, setError] = useState('');
-      const [paused, setPaused] = useState(false);
-      useEffect(() => {
-        const video = videoRef.current;
-        if (!video) return undefined;
-        if (!channel) { setState('idle'); return undefined; }
-        let hls = null;
-        let dead = false;
-        setState('loading'); setError(''); setPaused(false);
+    /**
+     * One player for the whole page. The <video> element and its hls.js instance live here, outside React, so leaving
+     * the TV panel does not stop playback: the element moves between the panel stage (rank 3), the floating mini player
+     * (rank 2) and a hidden dock (rank 1). moveBefore() moves it without the remove/insert steps, so playback and an open
+     * picture-in-picture window continue; older engines fall back to appendChild and resume playback.
+     */
+    function createEngine() {
+      const listeners = new Set();
+      const hosts = [];
+      let snap = { channel: null, state: 'idle', error: '', paused: false, pip: false, muted: false, volume: 1, panel: false };
+      let video = null;
+      let hls = null;
+      let gen = 0;
+      let t = (k) => k;
+      const set = (patch) => { snap = { ...snap, ...patch }; for (const fn of [...listeners]) fn(); };
+      function el() {
+        if (video) return video;
+        const v = document.createElement('video');
+        v.playsInline = true;
+        v.className = 'tv-video';
+        Object.assign(v.style, { position: 'absolute', inset: '0', width: '100%', height: '100%', objectFit: 'contain', background: 'transparent', display: 'block' });
+        const on = (type, fn) => v.addEventListener(type, fn);
+        on('playing', () => set({ state: 'playing', paused: false }));
+        on('waiting', () => { if (!v.paused && snap.state !== 'error') set({ state: 'loading' }); });
+        on('pause', () => { if (!snap.paused) set({ paused: true }); });
+        on('play', () => { if (snap.paused) set({ paused: false }); });
+        on('error', () => { if (!hls && snap.channel) set({ state: 'error', error: (v.error && v.error.message) || 'unsupported stream' }); });
+        on('enterpictureinpicture', () => set({ pip: true }));
+        on('leavepictureinpicture', () => set({ pip: false }));
+        video = v;
+        return v;
+      }
+      function place() {
+        if (!video) return;
+        let top = null;
+        for (const x of hosts) if (!top || x.rank > top.rank) top = x;
+        const parent = top && top.el;
+        if (!parent || video.parentNode === parent) return;
+        if (typeof parent.moveBefore === 'function' && video.isConnected && parent.isConnected) {
+          try { parent.moveBefore(video, null); return; } catch { /* fall back below */ }
+        }
+        const wasPlaying = !video.paused;
+        parent.appendChild(video);
+        if (wasPlaying) { const p = video.play(); if (p && p.catch) p.catch(() => {}); }
+      }
+      function teardown() {
+        gen += 1;
+        if (hls) { hls.destroy(); hls = null; }
+        if (video) { video.removeAttribute('src'); try { video.load(); } catch { /* detached */ } }
+      }
+      function start(channel) {
+        const v = el();
+        place();
+        teardown();
+        const my = gen;
+        const live = () => my === gen;
+        v.muted = snap.muted; v.volume = snap.volume;
+        set({ channel, state: 'loading', error: '', paused: false });
+        const fail = (msg) => { if (live()) set({ state: 'error', error: msg }); };
+        const go = () => { const p = v.play(); if (p && p.catch) p.catch(() => { if (live()) set({ paused: true }); }); };
         const src = streamUrl(channel.url);
-        const fail = (msg) => { if (!dead) { setState('error'); setError(msg); } };
-        const onPlaying = () => { if (!dead) { setState('playing'); setPaused(false); } };
-        const onWaiting = () => { if (!dead && !video.paused) setState('loading'); };
-        const onPause = () => { if (!dead) setPaused(true); };
-        const onPlay = () => { if (!dead) setPaused(false); };
-        const onVideoError = () => { if (!hls && !dead) fail((video.error && video.error.message) || 'unsupported stream'); };
-        video.addEventListener('playing', onPlaying);
-        video.addEventListener('waiting', onWaiting);
-        video.addEventListener('pause', onPause);
-        video.addEventListener('play', onPlay);
-        video.addEventListener('error', onVideoError);
-        const start = () => { const p = video.play(); if (p && p.catch) p.catch(() => { if (!dead) setPaused(true); }); };
         loadHls().then((Hls) => {
-          if (dead) return;
+          if (!live()) return;
           if (Hls.isSupported()) {
             let retries = 0; let media = 0;
-            hls = new Hls({ maxBufferLength: 20, manifestLoadingTimeOut: 15000, fragLoadingTimeOut: 20000 });
-            hls.on(Hls.Events.ERROR, (_e, data) => {
-              if (!data.fatal) return;
+            const inst = new Hls({ maxBufferLength: 20, manifestLoadingTimeOut: 15000, fragLoadingTimeOut: 20000 });
+            hls = inst;
+            inst.on(Hls.Events.ERROR, (_e, data) => {
+              if (!live() || !data.fatal) return;
               const manifest = data.details === Hls.ErrorDetails.MANIFEST_LOAD_ERROR || data.details === Hls.ErrorDetails.MANIFEST_LOAD_TIMEOUT;
-              if (data.type === Hls.ErrorTypes.NETWORK_ERROR && !manifest && retries < 3) { retries += 1; hls.startLoad(); return; }
-              if (data.type === Hls.ErrorTypes.MEDIA_ERROR && media < 2) { media += 1; hls.recoverMediaError(); return; }
+              if (data.type === Hls.ErrorTypes.NETWORK_ERROR && !manifest && retries < 3) { retries += 1; inst.startLoad(); return; }
+              if (data.type === Hls.ErrorTypes.MEDIA_ERROR && media < 2) { media += 1; inst.recoverMediaError(); return; }
               const r = data.response || {};
               const body = typeof r.text === 'string' ? r.text.slice(0, 160) : '';
               fail(r.code ? t('sourceFailed', { detail: body || ('HTTP ' + r.code) }) : (data.details || data.type));
             });
-            hls.on(Hls.Events.MANIFEST_PARSED, start);
-            hls.loadSource(src);
-            hls.attachMedia(video);
-          } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-            video.src = src; start();
+            inst.on(Hls.Events.MANIFEST_PARSED, go);
+            inst.loadSource(src);
+            inst.attachMedia(v);
+          } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
+            v.src = src; go();
           } else fail('HLS is not supported in this browser');
         }).catch((e) => fail(e.message));
-        return () => {
-          dead = true;
-          video.removeEventListener('playing', onPlaying);
-          video.removeEventListener('waiting', onWaiting);
-          video.removeEventListener('pause', onPause);
-          video.removeEventListener('play', onPlay);
-          video.removeEventListener('error', onVideoError);
-          if (hls) hls.destroy();
-          video.removeAttribute('src');
-          try { video.load(); } catch { /* detached */ }
-        };
-      }, [channel && channel.id, attempt]);
-      return { state, error, paused };
+      }
+      const hasPanel = () => hosts.some((x) => x.rank >= 3);
+      function exitPip() { if (video && document.pictureInPictureElement === video) document.exitPictureInPicture().catch(() => {}); }
+      function stop() { exitPip(); teardown(); set({ channel: null, state: 'idle', error: '', paused: false }); }
+      return {
+        get: () => snap,
+        subscribe(fn) { listeners.add(fn); return () => { listeners.delete(fn); }; },
+        setT(fn) { t = fn; },
+        t: (k, v) => t(k, v),
+        video: () => video,
+        claim(node, rank) { hosts.push({ el: node, rank }); place(); if (rank >= 3 && !snap.panel) set({ panel: true }); },
+        release(node) {
+          const i = hosts.findIndex((x) => x.el === node);
+          if (i < 0) return;
+          hosts.splice(i, 1);
+          place();
+          if (snap.panel && !hasPanel()) set({ panel: false });
+        },
+        play: start,
+        retry() { if (snap.channel) start(snap.channel); },
+        toggle() {
+          if (!video || !snap.channel) return;
+          if (video.paused) { const p = video.play(); if (p && p.catch) p.catch(() => {}); } else video.pause();
+        },
+        setMuted(m) { set({ muted: !!m }); if (video) video.muted = !!m; },
+        setVolume(n) { set({ volume: n, muted: n === 0 }); if (video) { video.volume = n; video.muted = n === 0; } },
+        pip() {
+          if (!video || !snap.channel) return;
+          if (document.pictureInPictureElement === video) exitPip();
+          else if (video.requestPictureInPicture) video.requestPictureInPicture().catch(() => {});
+        },
+        stop,
+        destroy() { stop(); listeners.clear(); if (video && video.parentNode) video.parentNode.removeChild(video); video = null; },
+      };
+    }
+    const engine = createEngine();
+    const ui = { ctx: null, restored: false, mini: { right: 24, bottom: 24 } };
+
+    function useEngine() {
+      if (typeof React.useSyncExternalStore === 'function') return React.useSyncExternalStore(engine.subscribe, engine.get, engine.get);
+      const [, force] = useState(0);
+      useEffect(() => engine.subscribe(() => force((n) => n + 1)), []);
+      return engine.get();
+    }
+    const useLayout = React.useLayoutEffect || useEffect;
+
+    /** A seat for the shared <video>; the highest-ranked mounted seat holds it. */
+    function VideoHost(props) {
+      const ref = useRef(null);
+      useLayout(() => {
+        const node = ref.current;
+        engine.claim(node, props.rank);
+        return () => engine.release(node);
+      }, []);
+      return h('div', { ref, className: props.className, style: props.style, 'aria-hidden': props.hidden || undefined });
     }
 
     function Logo(props) {
@@ -153,6 +234,17 @@ window.__ModuleLoader__.load({
         c && c.logo && !broken
           ? h('img', { src: c.logo, alt: '', loading: 'lazy', referrerPolicy: 'no-referrer', onError: () => setBroken(true) })
           : h('span', { className: 'tv-logo-txt', style: { fontSize: Math.round(size * 0.34) } }, initials(c ? c.name : '')));
+    }
+
+    /** Filled play/pause glyph; the triangle is nudged right so it looks centred in a circle. */
+    function PlayGlyph(props) {
+      const size = props.size || 20;
+      return h('svg', { viewBox: '0 0 24 24', width: size, height: size, 'aria-hidden': true, className: 'tv-glyph', style: { display: 'block', flex: 'none' } },
+        props.paused
+          ? h('path', { d: 'M8.6 5.2c-.9-.55-2.1.1-2.1 1.15v11.3c0 1.05 1.2 1.7 2.1 1.15l9.3-5.65c.86-.52.86-1.78 0-2.3z', fill: 'currentColor', transform: 'translate(1.2 0)' })
+          : h('g', { fill: 'currentColor' },
+            h('rect', { x: 6.5, y: 5, width: 4, height: 14, rx: 1.3 }),
+            h('rect', { x: 13.5, y: 5, width: 4, height: 14, rx: 1.3 })));
     }
 
     function Btn(props) {
@@ -256,7 +348,7 @@ window.__ModuleLoader__.load({
             h(ProxySettings, { t, onSaved: onChange }))));
     }
 
-    const session = { current: null, guide: true }; // survives panel switches within the page
+    const session = { guide: true }; // survives panel switches within the page
 
     function Panel(props) {
       const t = props.t || ((k) => k);
@@ -270,23 +362,22 @@ window.__ModuleLoader__.load({
       const [busy, setBusy] = useState(false);
       const [sheet, setSheet] = useState(false);
       const [lists, setLists] = useState([]);
-      const [current, setCurrent] = useState(session.current);
       const [favIds, setFavIds] = useState({});
       const [guide, setGuideState] = useState(session.guide);
       const [idle, setIdle] = useState(false);
       const [fs, setFs] = useState(false);
-      const [muted, setMuted] = useState(false);
-      const [volume, setVolume] = useState(1);
-      const [attempt, setAttempt] = useState(0);
       const [osd, setOsd] = useState(null);
       const [copied, setCopied] = useState(false);
       const rootRef = useRef(null);
-      const videoRef = useRef(null);
       const listRef = useRef(null);
       const alive = useRef(true);
       const seq = useRef(0);
       const idleTimer = useRef(0);
-      const play = usePlayback(videoRef, current, attempt, t);
+      const play = useEngine();
+      const current = play.channel;
+      const muted = play.muted;
+      const volume = play.volume;
+      const setMuted = engine.setMuted;
 
       const setGuide = (v) => { session.guide = v; setGuideState(v); };
       useEffect(() => { alive.current = true; return () => { alive.current = false; clearTimeout(idleTimer.current); }; }, []);
@@ -309,9 +400,11 @@ window.__ModuleLoader__.load({
       }, []);
       useEffect(() => { if (sheet) loadLists(); }, [sheet, loadLists]);
       useEffect(() => {
-        if (!data || current || session.current || !data.last) return;
-        const l = data.last; const c = { id: l.id, name: l.name, url: l.url, logo: l.logo, group: l.group };
-        session.current = c; setCurrent(c);
+        // Restore the last channel once per page load, paused-free but only when nothing is playing yet.
+        if (!data || ui.restored || engine.get().channel || !data.last) return;
+        ui.restored = true;
+        const l = data.last;
+        engine.play({ id: l.id, name: l.name, url: l.url, logo: l.logo, group: l.group });
       }, [data]);
 
       // Hide the chrome after a few idle seconds while video plays; any pointer or key activity shows it again.
@@ -328,7 +421,6 @@ window.__ModuleLoader__.load({
         document.addEventListener('fullscreenchange', onFs);
         return () => document.removeEventListener('fullscreenchange', onFs);
       }, []);
-      useEffect(() => { const v = videoRef.current; if (v) { v.muted = muted; v.volume = volume; } }, [muted, volume, current && current.id]);
       useEffect(() => {
         if (!osd) return undefined;
         const id = setTimeout(() => setOsd(null), 2400);
@@ -343,7 +435,8 @@ window.__ModuleLoader__.load({
       const currentFav = current ? (current.id in favIds ? favIds[current.id] : (currentIndex >= 0 ? !!items[currentIndex].favorite : tab === 'fav')) : false;
 
       const tune = (c, index) => {
-        session.current = c; setCurrent(c); setAttempt(0);
+        ui.restored = true;
+        engine.play(c);
         setOsd({ n: index >= 0 ? index + 1 : null, c });
         call({ action: 'last', id: c.id, name: c.name, url: c.url, logo: c.logo, group: c.group }).catch(() => {});
       };
@@ -361,16 +454,12 @@ window.__ModuleLoader__.load({
           else setData((d) => (d ? { ...d, favoriteCount: Math.max(0, d.favoriteCount + (next ? 1 : -1)) } : d));
         } catch (e) { setFavIds((m) => ({ ...m, [c.id]: !next })); setError(e.message); }
       };
-      const togglePlay = () => {
-        const v = videoRef.current;
-        if (!v || !current) return;
-        if (v.paused) { const p = v.play(); if (p && p.catch) p.catch(() => {}); } else v.pause();
-      };
+      const togglePlay = engine.toggle;
       const toggleFs = () => {
         if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
         else if (rootRef.current && rootRef.current.requestFullscreen) rootRef.current.requestFullscreen().catch(() => {});
       };
-      const pip = () => { const v = videoRef.current; if (v && v.requestPictureInPicture) v.requestPictureInPicture().catch(() => {}); };
+      const pip = engine.pip;
       const copy = async () => {
         if (!current) return;
         try { await navigator.clipboard.writeText(current.url); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* blocked */ }
@@ -439,8 +528,8 @@ window.__ModuleLoader__.load({
       },
         h('style', null, CSS),
         h('div', { className: 'tv-ambient', 'aria-hidden': true }, ambient ? h('img', { key: ambient, src: ambient, alt: '', referrerPolicy: 'no-referrer' }) : null),
-        h('div', { className: 'tv-stage' + (current ? ' has-channel' : ''), onDoubleClick: current ? toggleFs : undefined, onClick: (e) => { if (e.target === e.currentTarget || e.target === videoRef.current) togglePlay(); } },
-          h('video', { ref: videoRef, className: 'tv-video', playsInline: true, autoPlay: true }),
+        h('div', { className: 'tv-stage' + (current ? ' has-channel' : ''), onDoubleClick: current ? toggleFs : undefined, onClick: (e) => { if (e.target === e.currentTarget || e.target === engine.video() || (e.target.classList && e.target.classList.contains('tv-vhost'))) togglePlay(); } },
+          h(VideoHost, { rank: 3, className: 'tv-vhost' }),
           !current ? h('div', { className: 'tv-hero' },
             h('div', { className: 'tv-hero-mark' }, h(Icon, { name: 'tv', size: 40, stroke: 1.4 })),
             h('h1', null, t('nothing')),
@@ -452,9 +541,9 @@ window.__ModuleLoader__.load({
             h('strong', null, current.name),
             h('span', null, t('playerError', { error: play.error })),
             h('div', { className: 'tv-center-actions' },
-              h('button', { type: 'button', className: 'tv-pill-btn', onClick: () => setAttempt((n) => n + 1) }, h(Icon, { name: 'refresh', size: 14 }), t('retry')),
+              h('button', { type: 'button', className: 'tv-pill-btn', onClick: engine.retry }, h(Icon, { name: 'refresh', size: 14 }), t('retry')),
               items.length > 1 ? h('button', { type: 'button', className: 'tv-pill-btn is-primary', onClick: () => step(1) }, t('nextCh'), h(Icon, { name: 'right', size: 14 })) : null)) : null,
-          current && play.paused && play.state !== 'error' && play.state !== 'loading' ? h('button', { type: 'button', className: 'tv-bigplay', 'aria-label': t('play'), onClick: togglePlay }, h(Icon, { name: 'play', size: 34 })) : null),
+          current && play.paused && play.state !== 'error' && play.state !== 'loading' ? h('button', { type: 'button', className: 'tv-bigplay', 'aria-label': t('play'), onClick: togglePlay }, h(PlayGlyph, { paused: true, size: 36 })) : null),
         osd ? h('div', { className: 'tv-osd', key: osd.c.id + ':' + osd.n },
           osd.n ? h('span', { className: 'tv-osd-n' }, String(osd.n).padStart(2, '0')) : null,
           h('span', { className: 'tv-osd-name' }, osd.c.name)) : null,
@@ -468,27 +557,120 @@ window.__ModuleLoader__.load({
           h('div', { className: 'tv-now' },
             h(Logo, { c: current, size: 52 }),
             h('div', { className: 'tv-now-text' },
-              h('span', { className: 'tv-live' + (play.state === 'playing' ? ' is-on' : '') }, h('i'), t('live'), currentIndex >= 0 ? h('b', null, 'CH ' + String(currentIndex + 1).padStart(2, '0')) : null),
+              h('span', { className: 'tv-live' + (play.state === 'playing' ? ' is-on' : '') }, h('i'), play.pip ? t('inPip') : t('live'), currentIndex >= 0 ? h('b', null, 'CH ' + String(currentIndex + 1).padStart(2, '0')) : null),
               h('strong', null, current.name),
               h('span', null, current.group))),
           h('div', { className: 'tv-ctl' },
             h(Btn, { icon: 'up', label: t('prevCh'), onClick: () => step(-1), disabled: !items.length }),
-            h(Btn, { icon: play.paused ? 'play' : 'pause', size: 22, label: play.paused ? t('play') : t('pause'), onClick: togglePlay, className: 'tv-btn-main' }),
+            h('button', { type: 'button', className: 'tv-btn tv-btn-main', title: play.paused ? t('play') : t('pause'), 'aria-label': play.paused ? t('play') : t('pause'), onClick: togglePlay },
+              h(PlayGlyph, { paused: play.paused, size: 20 })),
             h(Btn, { icon: 'down', label: t('nextCh'), onClick: () => step(1), disabled: !items.length }),
             h('span', { className: 'tv-sep' }),
             h('div', { className: 'tv-vol' },
               h(Btn, { icon: muted || volume === 0 ? 'mute' : 'volume', label: muted ? t('unmute') : t('mute'), onClick: () => setMuted(!muted) }),
               h('input', { type: 'range', min: 0, max: 1, step: 0.05, value: muted ? 0 : volume, 'aria-label': t('volume'), style: { '--tv-v': (muted ? 0 : volume) * 100 + '%' },
-                onChange: (e) => { const v = Number(e.target.value); setVolume(v); setMuted(v === 0); } })),
+                onChange: (e) => engine.setVolume(Number(e.target.value)) })),
             h(Btn, { icon: 'star', label: currentFav ? t('unfav') : t('fav'), on: currentFav, className: 'tv-fav', onClick: () => toggleFav(current) }),
             h(Btn, { icon: copied ? 'check' : 'copy', label: copied ? t('copied') : t('openRaw'), onClick: copy }),
-            h(Btn, { icon: 'pip', label: t('pip'), onClick: pip }),
+            h(Btn, { icon: 'pip', label: play.pip ? t('exitPip') : t('pip'), on: play.pip, onClick: pip }),
             h(Btn, { icon: fs ? 'collapse' : 'expand', label: fs ? t('exitFullscreen') : t('fullscreen'), onClick: toggleFs }))) : null,
         error ? h('div', { className: 'tv-toast', role: 'alert' }, h(Icon, { name: 'alert', size: 15 }), h('span', null, error),
           h('button', { type: 'button', onClick: () => load(true) }, t('retry')), h('button', { type: 'button', 'aria-label': 'Close', onClick: () => setError(null) }, h(Icon, { name: 'x', size: 13 }))) : null,
         guidePanel,
         sheet ? h(SettingsSheet, { t, lists, onChange: () => { loadLists(); load(true); }, onClose: () => setSheet(false) }) : null);
     }
+
+    /**
+     * Frame-wide mini player in shell.overlay. It always keeps a hidden dock for the <video> (so picture in picture and
+     * audio survive any navigation) and shows a draggable card while a channel plays and the TV panel is not open.
+     */
+    function MiniPlayer() {
+      const snap = useEngine();
+      const t = engine.t;
+      const [pos, setPos] = useState(ui.mini);
+      const drag = useRef(null);
+      const show = !!snap.channel && !snap.panel && !snap.pip;
+      const back = () => {
+        const layout = ui.ctx && ui.ctx.get('layout');
+        if (layout) { try { layout.selectPanel(PANEL_ID); } catch { /* panel not registered */ } }
+      };
+      const onDown = (e) => {
+        if (e.button !== 0 || (e.target.closest && e.target.closest('button'))) return;
+        e.preventDefault();
+        drag.current = { x: e.clientX, y: e.clientY, right: pos.right, bottom: pos.bottom, moved: false };
+        e.currentTarget.setPointerCapture(e.pointerId);
+      };
+      const onMove = (e) => {
+        const d = drag.current;
+        if (!d) return;
+        const dx = e.clientX - d.x; const dy = e.clientY - d.y;
+        if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = true;
+        const right = Math.min(Math.max(8, d.right - dx), window.innerWidth - 120);
+        const bottom = Math.min(Math.max(8, d.bottom - dy), window.innerHeight - 80);
+        setPos({ right, bottom });
+      };
+      const onUp = (e) => {
+        const d = drag.current;
+        drag.current = null;
+        if (!d) return;
+        ui.mini = pos;
+        if (!d.moved && e.target.classList && (e.target.classList.contains('tvm-vhost') || e.target === engine.video())) engine.toggle();
+      };
+      const c = snap.channel;
+      return h(React.Fragment, null,
+        h('style', null, MINI_CSS),
+        h(VideoHost, { rank: 1, className: 'tvm-dock', hidden: true }),
+        show ? h('div', {
+          className: 'tvm', role: 'region', 'aria-label': c.name, title: t('miniDrag'),
+          style: { right: pos.right + 'px', bottom: pos.bottom + 'px' },
+          onPointerDown: onDown, onPointerMove: onMove, onPointerUp: onUp, onPointerCancel: onUp, onDoubleClick: back,
+        },
+          h('div', { className: 'tvm-screen' },
+            h(VideoHost, { rank: 2, className: 'tvm-vhost' }),
+            snap.state === 'loading' ? h('div', { className: 'tvm-note' }, h('span', { className: 'tvm-ring' })) : null,
+            snap.state === 'error' ? h('div', { className: 'tvm-note is-error' }, h(Icon, { name: 'alert', size: 18 }), h('span', null, snap.error)) : null,
+            h('div', { className: 'tvm-top' },
+              h('button', { type: 'button', className: 'tvm-btn', title: t('backToTv'), 'aria-label': t('backToTv'), onClick: back }, h(Icon, { name: 'expand', size: 15, stroke: 2 })),
+              h('button', { type: 'button', className: 'tvm-btn', title: t('closePlayer'), 'aria-label': t('closePlayer'), onClick: engine.stop }, h(Icon, { name: 'x', size: 15, stroke: 2 })))),
+          h('div', { className: 'tvm-bar' },
+            h('button', { type: 'button', className: 'tvm-play', title: snap.paused ? t('play') : t('pause'), 'aria-label': snap.paused ? t('play') : t('pause'), onClick: engine.toggle }, h(PlayGlyph, { paused: snap.paused, size: 15 })),
+            h('div', { className: 'tvm-text' },
+              h('span', { className: 'tvm-live' + (snap.state === 'playing' ? ' is-on' : '') }, h('i'), t('live')),
+              h('strong', null, c.name)),
+            h('button', { type: 'button', className: 'tvm-btn', title: snap.muted ? t('unmute') : t('mute'), 'aria-label': snap.muted ? t('unmute') : t('mute'), onClick: () => engine.setMuted(!snap.muted) }, h(Icon, { name: snap.muted ? 'mute' : 'volume', size: 16 })),
+            h('button', { type: 'button', className: 'tvm-btn', title: t('pip'), 'aria-label': t('pip'), onClick: engine.pip }, h(Icon, { name: 'pip', size: 16 })))) : null);
+    }
+
+    const MINI_CSS = [
+      '.tvm-dock{position:fixed;right:0;bottom:0;width:2px;height:2px;opacity:0;pointer-events:none;overflow:hidden;z-index:-1}',
+      '.tvm{position:fixed;z-index:2147483000;width:340px;max-width:calc(100vw - 16px);border-radius:16px;overflow:hidden;pointer-events:auto;cursor:grab;user-select:none;touch-action:none;color:#f4f5f8;font-size:12.5px;background:#07080c;border:1px solid rgba(255,255,255,.1);box-shadow:0 22px 60px -18px rgba(0,0,0,.75),0 0 0 1px rgba(0,0,0,.3);animation:tvm-in .25s cubic-bezier(.2,.7,.2,1) both}',
+      '.tvm:active{cursor:grabbing}',
+      '@keyframes tvm-in{from{opacity:0;transform:translateY(10px) scale(.97)}}',
+      '.tvm *{box-sizing:border-box}',
+      '.tvm button{font:inherit;color:inherit}',
+      '.tvm-screen{position:relative;aspect-ratio:16/9;background:#000}',
+      '.tvm-vhost{position:absolute;inset:0}',
+      '.tvm-top{position:absolute;top:0;left:0;right:0;display:flex;justify-content:flex-end;gap:4px;padding:8px;background:linear-gradient(rgba(0,0,0,.55),transparent);opacity:0;transition:opacity .2s}',
+      '.tvm:hover .tvm-top,.tvm:focus-within .tvm-top{opacity:1}',
+      '.tvm-note{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:12px;text-align:center;background:rgba(0,0,0,.45);pointer-events:none;color:rgba(236,238,245,.75);font-size:11.5px}',
+      '.tvm-note.is-error svg{color:#ff6b72}',
+      '.tvm-note span{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}',
+      '.tvm-ring{width:24px;height:24px;border-radius:50%;border:2.5px solid rgba(255,255,255,.18);border-top-color:#fff;animation:tvm-spin .9s linear infinite}',
+      '@keyframes tvm-spin{to{transform:rotate(360deg)}}',
+      '.tvm-bar{display:flex;align-items:center;gap:6px;padding:8px 8px 8px 10px;background:rgba(18,20,28,.96)}',
+      '.tvm-text{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}',
+      '.tvm-text strong{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      '.tvm-live{display:inline-flex;align-items:center;gap:5px;font-size:10px;font-weight:700;letter-spacing:.08em;color:rgba(236,238,245,.5)}',
+      '.tvm-live i{width:6px;height:6px;border-radius:50%;background:rgba(236,238,245,.35)}',
+      '.tvm-live.is-on{color:#ff5a5f}',
+      '.tvm-live.is-on i{background:#ff3b42}',
+      '.tvm-play{flex:none;display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;padding:0;border:0;border-radius:50%;background:#fff;color:#0b0c10;cursor:pointer}',
+      '.tvm-btn{flex:none;display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;padding:0;border:0;border-radius:50%;background:rgba(255,255,255,.08);color:#f4f5f8;cursor:pointer;transition:background .15s}',
+      '.tvm-btn:hover{background:rgba(255,255,255,.18)}',
+      '.tvm-top .tvm-btn{background:rgba(0,0,0,.45)}',
+      '.tvm :focus-visible{outline:2px solid #fff;outline-offset:2px}',
+      '@media (prefers-reduced-motion:reduce){.tvm,.tvm *{animation:none!important;transition:none!important}}',
+    ].join('');
 
     const BRANDV = 'var(' + BRAND + ')';
     const INK = '#f4f5f8';
@@ -500,7 +682,9 @@ window.__ModuleLoader__.load({
     const CSS = [
       '.tv-root{container-type:inline-size;position:relative;height:100%;overflow:hidden;background:#05060a;color:' + INK + ';font-size:13px;isolation:isolate;--tv-gw:' + GW + ';--tv-brand:' + BRANDV + '}',
       '.tv-root *,.tv-root *::before,.tv-root *::after{box-sizing:border-box}',
-      '.tv-root button,.tv-root input,.tv-root select{font:inherit;color:inherit}',
+      // :where() keeps the reset at element specificity so every control class can set its own colour.
+      ':where(.tv-root) :where(button,input,select){font:inherit}',
+      ':where(.tv-root) :where(button){color:' + INK + '}',
       '.tv-root :focus-visible{outline:2px solid var(--tv-brand);outline-offset:2px}',
       '.tv-root:focus{outline:0}',
       /* ambient backdrop: the current channel logo blown up and blurred, over a brand-tinted vignette */
@@ -512,8 +696,8 @@ window.__ModuleLoader__.load({
       '@container (min-width:980px){.tv-root.has-guide .tv-stage,.tv-root.has-guide .tv-chrome{right:var(--tv-gw)}}',
       '.tv-stage.has-channel{cursor:pointer}',
       '.tv-root.is-idle .tv-stage{cursor:none}',
-      '.tv-video{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:transparent}',
-      '.tv-stage:not(.has-channel) .tv-video{display:none}',
+      '.tv-vhost{position:absolute;inset:0}',
+      '.tv-stage:not(.has-channel) .tv-vhost{display:none}',
       '.tv-hero{position:relative;display:flex;flex-direction:column;align-items:center;gap:12px;padding:24px;text-align:center;max-width:460px;animation:tv-rise .6s cubic-bezier(.2,.7,.2,1) both}',
       '@keyframes tv-rise{from{opacity:0;transform:translateY(10px)}}',
       '.tv-hero-mark{display:inline-flex;align-items:center;justify-content:center;width:84px;height:84px;border-radius:26px;color:' + INK + ';' + DARK_GLASS + '}',
@@ -526,8 +710,9 @@ window.__ModuleLoader__.load({
       '.tv-center span{word-break:break-word}',
       '.tv-center-actions{display:flex;gap:8px;margin-top:4px}',
       '.tv-ring{width:34px;height:34px;border-radius:50%;border:3px solid rgba(255,255,255,.14);border-top-color:var(--tv-brand);animation:lp-spin .9s linear infinite}',
-      '.tv-bigplay{position:relative;display:inline-flex;align-items:center;justify-content:center;width:84px;height:84px;padding-left:5px;border-radius:50%;border:0;cursor:pointer;' + DARK_GLASS + ';transition:transform .15s}',
-      '.tv-bigplay:hover{transform:scale(1.06)}',
+      '.tv-bigplay{position:relative;display:inline-flex;align-items:center;justify-content:center;width:84px;height:84px;padding:0;border-radius:50%;cursor:pointer;color:#fff;' + DARK_GLASS + ';transition:transform .18s,background .18s;animation:tv-rise .25s ease both}',
+      '.tv-bigplay:hover{transform:scale(1.07);background:rgba(255,255,255,.18)}',
+      '.tv-bigplay:active{transform:scale(.96)}',
       /* channel OSD, like a TV set's channel banner */
       '.tv-osd{position:absolute;z-index:4;top:72px;left:28px;display:flex;align-items:baseline;gap:14px;pointer-events:none;text-shadow:0 2px 18px rgba(0,0,0,.6);animation:tv-osd 2.4s ease both}',
       '.tv-osd-n{font-size:56px;line-height:1;font-weight:700;font-variant-numeric:tabular-nums;letter-spacing:-.03em;color:' + INK + '}',
@@ -564,8 +749,9 @@ window.__ModuleLoader__.load({
       '.tv-btn.tv-fav.is-on svg path{fill:currentColor}',
       '.tv-btn.is-danger:hover{color:var(' + ERR + ');background:color-mix(in srgb,var(' + ERR + ') 16%,transparent)}',
       '.tv-btn.is-busy svg{animation:lp-spin 1s linear infinite}',
-      '.tv-btn-main{width:46px;height:46px;background:#fff;color:#0b0c10}',
-      '.tv-btn-main:hover:not(:disabled){background:#fff;filter:brightness(.92)}',
+      '.tv-btn.tv-btn-main{flex:none;width:44px;min-width:44px;height:44px;padding:0;margin:0 2px;border-radius:50%;background:#fff;color:#0b0c10;box-shadow:0 4px 14px -4px rgba(0,0,0,.5)}',
+      '.tv-btn.tv-btn-main:hover:not(:disabled){background:#fff;transform:scale(1.05)}',
+      '.tv-btn.tv-btn-main:active:not(:disabled){transform:scale(.95)}',
       '.tv-top .tv-btn{' + DARK_GLASS + '}',
       '.tv-top .tv-btn.is-on{background:color-mix(in srgb,var(--tv-brand) 30%,rgba(16,18,26,.6));color:#fff}',
       '.tv-vol{display:flex;align-items:center}',
@@ -682,6 +868,10 @@ window.__ModuleLoader__.load({
       apply(ctx) {
         ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'iptv: dictionaries');
         const t = ctx.locale.bind(NS);
+        ui.ctx = ctx;
+        engine.setT(t);
+        ctx.effect(() => () => { engine.destroy(); ui.ctx = null; }, 'iptv: player');
+        ctx.slots.inject('shell.overlay', () => ctx.slots.register({ name: 'shell.overlay', id: 'iptv-mini-player', order: 50 }, MiniPlayer));
         ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS }, Panel));
         ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
           name: 'sidebar.panellist', id: PANEL_ID, order: 29, label: () => t('panel'), locale: NS,

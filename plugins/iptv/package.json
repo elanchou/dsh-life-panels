@@ -1,6 +1,6 @@
 {
   "name": "@local/iptv",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "An IPTV panel: load M3U/M3U8 playlists, browse channels by group, search, favorite, and watch live HLS streams in the panel.",
   "private": true,
   "license": "MIT",
