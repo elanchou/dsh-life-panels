@@ -203,6 +203,37 @@ window.__ModuleLoader__.load({
         h('button', { type: 'button', className: 'lp-ghost pc-speed', title: t('speed'), onClick: cycle }, p.speed + '×'));
     }
 
+    function PickCard(props) {
+      const { ep, rank, t, onChanged, onError } = props;
+      const p = usePlayer();
+      const current = p.ep && p.ep.id === ep.id;
+      const playing = current && p.audio && !p.audio.paused;
+      const act = async (body) => { try { await call(body); onChanged(); } catch (e) { onError(e.message); } };
+      const meta = [ep.publishedAt ? ago(ep.publishedAt, t) : null, fmtDur(ep.duration, t)].filter(Boolean).join(' · ');
+      return h('article', { className: 'pc-pick' + (current ? ' is-current' : '') },
+        h('div', { className: 'pc-pick-art' },
+          h(Cover, { src: ep.image, title: ep.show, size: 100 }),
+          h('span', { className: 'pc-pick-rank' }, rank),
+          h('button', { type: 'button', className: 'pc-play pc-play-lg pc-pick-play' + (playing ? ' is-playing' : ''), 'aria-label': playing ? t('pause') : t('play'), onClick: () => playEpisode(ep) },
+            h(Icon, { name: playing ? 'pause' : 'play', size: 22, stroke: playing ? 2.4 : 1.6 }))),
+        h('div', { className: 'pc-pick-body' },
+          h('div', { className: 'pc-pick-show' }, ep.show),
+          h('h3', { className: 'pc-pick-title', title: ep.title }, ep.title),
+          ep.reason ? h('div', { className: 'pc-pick-reason' }, h(Icon, { name: 'sparkle', size: 13 }), h('span', null, ep.reason)) : null,
+          ep.summary ? h('p', { className: 'pc-pick-sum' }, ep.summary) : null),
+        h('div', { className: 'pc-pick-foot' },
+          h('span', { className: 'pc-pick-meta' }, meta),
+          h('span', { className: 'pc-pick-actions' },
+            h('button', {
+              type: 'button', className: 'lp-ghost pc-pick-btn' + (ep.queued ? ' is-on' : ''), title: ep.queued ? t('queueRemove') : t('queueAdd'),
+              onClick: () => act({ action: ep.queued ? 'queue_remove' : 'queue_add', id: ep.id }),
+            }, h(Icon, { name: ep.queued ? 'check' : 'plus', size: 13 }), ep.queued ? t('queued') : t('queueAdd')),
+            h('button', {
+              type: 'button', className: 'lp-round lp-round-sm', title: t('markPlayed'), 'aria-label': t('markPlayed'),
+              onClick: () => act({ action: 'progress', id: ep.id, played: true }),
+            }, h(Icon, { name: 'headphones', size: 14 })))));
+    }
+
     function Picks(props) {
       const { t, hasShows, onChanged, onError } = props;
       const [data, setData] = useState(null);
@@ -226,10 +257,10 @@ window.__ModuleLoader__.load({
           hasShows ? h('button', { type: 'button', className: 'lp-ghost', disabled: busy, onClick: () => fetchPicks(true) },
             h(Icon, { name: 'refresh', size: 14, className: busy ? 'lp-spin' : '' }), t('picksRegen')) : null),
         data === null || (busy && !eps.length) ? h('div', { className: 'lp-card' }, h('div', { className: 'lp-muted pc-picks-busy' }, h(Icon, { name: 'refresh', size: 14, className: 'lp-spin' }), t('picksBusy')),
-          [0, 1, 2].map((i) => h('div', { key: i, className: 'lp-skel', style: { height: 56, margin: '8px 0' } })))
+          h('div', { className: 'pc-picks', style: { marginTop: 12 } }, [0, 1, 2].map((i) => h('div', { key: i, className: 'lp-skel', style: { height: 420, borderRadius: 22 } }))))
           : !hasShows ? h('div', { className: 'lp-card' }, h(Empty, { icon: 'mic', text: t('picksNoShows') }))
             : !eps.length ? h('div', { className: 'lp-card' }, h(Empty, { icon: 'headphones', text: t('picksEmpty') }))
-              : h('div', { className: 'lp-card pc-list' }, h('ul', { className: 'pc-eps' }, eps.map((ep) => h(Episode, { key: ep.id, ep, t, onChanged: () => { onChanged(); fetchPicks(false); }, onError, showShow: true })))));
+              : h('div', { className: 'pc-picks' }, eps.map((ep, i) => h(PickCard, { key: ep.id, ep, rank: i + 1, t, onChanged: () => { onChanged(); fetchPicks(false); }, onError }))));
     }
 
     function ShowTile(props) {
@@ -480,6 +511,25 @@ window.__ModuleLoader__.load({
       '.pc-picks-title{display:flex;align-items:center;gap:6px;margin:0}',
       '.pc-picks-sub{margin-top:3px;font-size:12px;color:' + FG2 + '}',
       '.pc-picks-busy{display:flex;align-items:center;gap:8px;padding:6px 2px}',
+      '.pc-picks{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:18px}',
+      '.pc-pick{position:relative;display:flex;flex-direction:column;gap:14px;padding:14px 14px 16px;border-radius:24px;' + GLASS + ';transition:transform .18s,box-shadow .18s}',
+      '.pc-pick:hover{transform:translateY(-2px)}',
+      '.pc-pick.is-current{box-shadow:0 0 0 2px var(' + BRAND + ')}',
+      '.pc-pick-art{position:relative}',
+      '.pc-pick-art .pc-cover{width:100%!important;height:auto!important;aspect-ratio:1;border-radius:16px!important;font-size:72px;box-shadow:0 8px 24px ' + tint('--dsw-alias-label-primary', 18) + '}',
+      '.pc-pick-rank{position:absolute;left:10px;top:10px;min-width:26px;height:26px;padding:0 8px;display:inline-flex;align-items:center;justify-content:center;border-radius:13px;background:rgba(0,0,0,.55);color:#fff;font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px)}',
+      '.pc-pick-play{position:absolute;right:12px;bottom:12px;width:52px;height:52px;box-shadow:0 6px 18px rgba(0,0,0,.3)}',
+      '.pc-pick-body{display:flex;flex-direction:column;gap:6px;padding:0 4px;flex:1;min-width:0}',
+      '.pc-pick-show{font-size:12px;font-weight:600;color:var(' + BRAND + ');white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      '.pc-pick-title{margin:0;font-size:16px;line-height:22px;font-weight:700;color:' + FG + ';display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}',
+      '.pc-pick-reason{display:flex;align-items:flex-start;gap:6px;padding:8px 10px;border-radius:12px;background:' + tint(BRAND, 10) + ';color:var(' + BRAND + ');font-size:12.5px;line-height:18px;font-weight:550}',
+      '.pc-pick-reason svg{flex:none;margin-top:2px}',
+      '.pc-pick-sum{margin:0;font-size:12.5px;line-height:19px;color:' + FG2 + ';display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden}',
+      '.pc-pick-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:0 4px}',
+      '.pc-pick-meta{font-size:12px;color:' + FG2 + ';font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+      '.pc-pick-actions{display:inline-flex;align-items:center;gap:4px;flex:none}',
+      '.pc-pick-btn{height:28px;font-size:12px}',
+      '.pc-pick-btn.is-on{color:var(' + BRAND + ')}',
       '.pc-ep-reason{display:flex;align-items:center;gap:5px;margin-top:3px;font-size:12px;color:var(' + BRAND + ')}',
       '.pc-import{margin-bottom:14px}',
       '.pc-import-row{display:flex;align-items:center;flex-wrap:wrap;gap:10px}',
