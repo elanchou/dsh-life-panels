@@ -1,0 +1,41 @@
+{
+  "name": "@local/notes",
+  "version": "1.1.1",
+  "description": "Notes with Markdown and checklists: a list and an autosaving editor side by side, live preview, tickable to-dos, #tags, search and pinning. The agent can save, look up and tick off notes from chat.",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/elanchou/dsh-life-panels.git",
+    "directory": "plugins/notes"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "merge.js",
+    "common.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  }
+}

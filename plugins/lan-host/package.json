@@ -1,6 +1,6 @@
 {
   "name": "@local/lan-host",
-  "version": "1.0.1",
+  "version": "1.0.9",
   "description": "Serve the life panels to an iPad or another device on the local network: scan a QR code to pair, then use the same panels in its browser. Cloud sync and iCafe are never exposed.",
   "private": true,
   "license": "MIT",

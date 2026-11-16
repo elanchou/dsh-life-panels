@@ -2,18 +2,22 @@ import os from 'node:os';
 import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import { dataFile, registerRoute, registerTool, errorText } from './common.js';
-import { GitHubRepo, ghError, syncFile, writeJsonAtomic } from './engine.js';
+import { GitHubRepo, ghError, syncBatch, writeJsonAtomic } from './engine.js';
+import { INBOX, OUTBOX, parseInbox, runRequests, appendOutbox, agentReadme } from './inbox.js';
+import { toolAllowed } from './policy.js';
+import { lanRegistry } from './common.js';
 
 export const inject = ['tools', 'webServer', 'connection'];
 
 const ROUTE = '/plugin-api/cloud-sync';
 const TOKEN_REF = 'DSH_CLOUD_SYNC_GITHUB_TOKEN';
-const FILES = ['calendar-reminders', 'news-feeds', 'reading-list', 'travel-planner', 'podcasts', 'vocabulary', 'focus', 'youtube', 'iptv'];
+const FILES = ['calendar-reminders', 'news-feeds', 'reading-list', 'travel-planner', 'podcasts', 'vocabulary', 'focus', 'youtube', 'iptv', 'market', 'notes', 'elans-stack'];
 const DIR = path.join(path.dirname(dataFile('x')), '.cloud-sync');
 const STATE_FILE = path.join(DIR, 'state.json');
 const baseFile = (name) => path.join(DIR, 'base', name + '.json');
 const NAME_RE = /^[A-Za-z0-9_.-]{1,100}$/;
-const CHANGE_DELAY = 90 * 1000;
+// Quiet period after the last local edit before syncing. Longer means fewer commits; 3 minutes collects a burst of edits.
+const CHANGE_DELAY = 3 * 60 * 1000;
 
 const initialState = () => ({
   version: 1, config: null, auto: true, intervalMin: 10,
@@ -60,6 +64,7 @@ export function apply(ctx) {
       syncing: !!running, lastSyncAt: s.lastSyncAt, lastError: s.lastError,
       files: FILES.map((name) => ({ name, ...(s.files[name] || {}) })),
       log: s.log.slice(0, 20),
+      inbox: { folder: s.config ? s.config.dir + '/' + INBOX : null, outbox: s.config ? s.config.dir + '/' + OUTBOX : null, recent: (s.inboxLog || []).slice(0, 20) },
     };
   }
 
@@ -97,6 +102,26 @@ export function apply(ctx) {
     return publicStatus(s);
   }
 
+  /** Read the inbox folder and run its requests once each; ids already handled are remembered across syncs. */
+  async function processInbox(gh, s) {
+    const listed = (await gh.listDir(INBOX)).filter((f) => /\.jsonl?$/i.test(f.name));
+    if (!listed.length && !(s.inboxPending || []).length) return { files: [], results: [], outbox: '' };
+    const seenIds = new Set(s.inboxSeen || []);
+    const requests = [];
+    for (const f of listed) {
+      const text = await gh.readText(f.path);
+      if (text === undefined) continue;
+      requests.push(...parseInbox(text));
+    }
+    const fresh = requests.filter((r) => !(r && r.id !== undefined && seenIds.has(String(r.id))));
+    const ran = await runRequests(fresh, { seen: new Set() });
+    s.inboxSeen = [...seenIds, ...ran.map((r) => r.id)].slice(-2000);
+    // Results wait in the state until a commit carries them, so a failed push does not lose them.
+    s.inboxPending = [...(s.inboxPending || []), ...ran].slice(-500);
+    const outbox = (await gh.readText(gh.dir + '/' + OUTBOX)) || '';
+    return { files: listed, results: s.inboxPending, outbox };
+  }
+
   function syncAll(reason) {
     if (running) return running;
     running = (async () => {
@@ -105,22 +130,30 @@ export function apply(ctx) {
       const results = [];
       try {
         const gh = await repo();
-        const listing = await gh.listing();
-        const refreshSha = async (name) => (await gh.listing())[name] || null;
+        // All files that changed go up in one commit, so a sync adds at most one commit to the repository.
         const message = 'sync from ' + os.hostname() + ' (' + reason + ')';
-        for (const name of FILES) {
-          try {
-            const r = await syncFile({ gh, name, localFile: dataFile(name), baseFile: baseFile(name), remoteSha: listing[name] || null, state: s.files[name], message: message + ': ' + name, refreshSha });
-            s.files[name] = { sha: r.sha || null, status: r.status, conflicts: r.conflicts || 0, at: started, error: null };
-            results.push(r);
-          } catch (error) {
-            s.files[name] = { ...(s.files[name] || {}), error: errorText(error), at: started };
-            results.push({ name, status: 'error', error: errorText(error) });
-          }
-          seenMtime.set(name, await mtime(dataFile(name)));
+        const files = FILES.map((name) => ({ name, localFile: dataFile(name), baseFile: baseFile(name), state: s.files[name] }));
+        // Inbox: run requests other agents left in the repo before merging, so their effects go up in this commit.
+        const inbox = await processInbox(gh, s);
+        // The README tells other agents how to use the inbox; it is rewritten only when its text changes.
+        const tools = [...lanRegistry().tools.values()].filter((t) => toolAllowed(t, { scope: 'write' })).sort((a, b) => a.name.localeCompare(b.name));
+        const readme = agentReadme(gh.dir, FILES, tools);
+        const readmeChanged = s.readmeText !== readme && (await gh.readText(gh.dir + '/README.md')) !== readme;
+        const extra = () => [
+          ...(inbox.results.length ? [{ path: gh.dir + '/' + OUTBOX, content: appendOutbox(inbox.outbox, inbox.results) }] : []),
+          ...inbox.files.map((f) => ({ path: f.path, delete: true })),
+          ...(readmeChanged ? [{ path: gh.dir + '/README.md', content: readme }] : []),
+        ];
+        const out = await syncBatch({ gh, files, message, extra });
+        if (!out.extraSkipped) s.readmeText = readme;
+        if (inbox.results.length && !out.extraSkipped) s.inboxPending = [];
+        if (inbox.results.length && !out.extraSkipped) s.inboxLog = [...inbox.results.map((r) => ({ id: r.id, at: r.at, tool: r.tool, action: r.action, ok: r.ok, error: r.error || null })), ...(s.inboxLog || [])].slice(0, 50);
+        for (const r of out.results) {
+          s.files[r.name] = { sha: r.sha || null, status: r.status, conflicts: r.conflicts || 0, at: started, error: null };
+          results.push(r);
         }
-        const failed = results.filter((r) => r.status === 'error');
-        s.lastError = failed.length ? failed.map((r) => r.name + ': ' + r.error).join('; ') : null;
+        for (const name of FILES) seenMtime.set(name, await mtime(dataFile(name)));
+        s.lastError = null;
       } catch (error) {
         s.lastError = errorText(error);
       }
@@ -205,7 +238,7 @@ export function apply(ctx) {
   registerRoute(ctx, ROUTE, run, 'cloud-sync');
   registerTool(ctx, {
     name: 'cloud_sync',
-    description: 'Status and control of GitHub sync for the calendar, news feeds, reading list, travel and podcast panels. Actions: status (connection, last sync, per-file result, recent log), sync (run a sync now), settings (auto on/off, intervalMin 5-1440). Connecting needs a GitHub token, which the user enters in the Cloud Sync sidebar panel; never ask the user to paste a token into chat.',
+    description: 'Status and control of GitHub sync for the panel data. Each sync is at most one commit; other agents can change data by committing requests to the inbox folder (see the README in the sync folder). Actions: status (connection, last sync, per-file result, recent log), sync (run a sync now), settings (auto on/off, intervalMin 5-1440). Connecting needs a GitHub token, which the user enters in the Cloud Sync sidebar panel; never ask the user to paste a token into chat.',
     parameters: {
       type: 'object',
       properties: {

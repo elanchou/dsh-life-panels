@@ -23,7 +23,7 @@ window.__ModuleLoader__.load({
       addPlaceholder: '添加提醒，例如：周五前提交周报',
       add: '添加',
       date: '日期',
-      time: '时间',
+      time: '时间', repeat: '重复', rep_none: '不重复', rep_daily: '每天', rep_weekdays: '工作日', rep_weekly: '每周', rep_monthly: '每月', rep_yearly: '每年',
       delete: '删除',
       tabOpen: '待办',
       tabDone: '已完成',
@@ -60,7 +60,7 @@ window.__ModuleLoader__.load({
       addPlaceholder: 'Add a reminder, e.g. Send the weekly report by Friday',
       add: 'Add',
       date: 'Date',
-      time: 'Time',
+      time: 'Time', repeat: 'Repeat', rep_none: 'Once', rep_daily: 'Daily', rep_weekdays: 'Weekdays', rep_weekly: 'Weekly', rep_monthly: 'Monthly', rep_yearly: 'Yearly',
       delete: 'Delete',
       tabOpen: 'To do',
       tabDone: 'Done',
@@ -163,6 +163,7 @@ window.__ModuleLoader__.load({
       const when = [];
       if (showDate && item.date) when.push(relLabel(item.date, today, t));
       if (item.time) when.push(item.time);
+      if (item.repeat) when.push('↻ ' + t('rep_' + item.repeat));
       return h('div', { className: cls.join(' ') },
         h('button', {
           type: 'button', className: 'cr-check', role: 'checkbox', 'aria-checked': item.done,
@@ -257,6 +258,7 @@ window.__ModuleLoader__.load({
       const [title, setTitle] = useState('');
       const [date, setDate] = useState(todayStr());
       const [time, setTime] = useState('');
+      const [repeat, setRepeat] = useState('none');
       const [tab, setTab] = useState('open');
       const [busy, setBusy] = useState(false);
       const alive = useRef(true);
@@ -288,8 +290,8 @@ window.__ModuleLoader__.load({
       const onAdd = (event) => {
         event.preventDefault();
         if (!title.trim() || busy) return;
-        act({ action: 'add', title: title.trim(), date: date || '', time: time || '' })
-          .then((ok) => { if (ok && alive.current) { setTitle(''); setTime(''); } });
+        act({ action: 'add', title: title.trim(), date: date || '', time: time || '', ...(repeat !== 'none' ? { repeat } : {}) })
+          .then((ok) => { if (ok && alive.current) { setTitle(''); setTime(''); setRepeat('none'); } });
       };
       const onToggle = (item) => act({ action: item.done ? 'reopen' : 'complete', id: item.id });
       const onDelete = (item) => act({ action: 'delete', id: item.id });
@@ -349,6 +351,10 @@ window.__ModuleLoader__.load({
           h(Icon, { name: 'clock', size: 14 }),
           h('input', { type: 'time', value: time, onChange: (e) => setTime(e.target.value), 'aria-label': t('time') }),
         ),
+        h('label', { className: 'cr-field', title: t('repeat') },
+          h(Icon, { name: 'refresh', size: 14 }),
+          h('select', { className: 'cr-select', value: repeat, onChange: (e) => setRepeat(e.target.value), 'aria-label': t('repeat') },
+            ['none', 'daily', 'weekdays', 'weekly', 'monthly', 'yearly'].map((r) => h('option', { key: r, value: r }, t('rep_' + r))))),
         h('button', { type: 'submit', className: 'cr-primary', disabled: busy || !title.trim() }, t('add')),
       );
 
@@ -415,6 +421,7 @@ window.__ModuleLoader__.load({
     const OK = '--dsw-alias-state-success-primary';
     const IDLE = '--dsw-alias-state-idle-primary';
     /* @glass */
+    /* @suite */
 
     const CSS = [
       '.cr-root{' + GLASS_ROOT + ';box-sizing:border-box;height:100%;overflow:auto;color:var(--dsw-alias-label-primary);font-size:13px}',
@@ -449,7 +456,7 @@ window.__ModuleLoader__.load({
       '.cr-add-title::placeholder{color:var(--dsw-alias-label-secondary)}',
       '.cr-root .cr-add-title:focus-visible{outline:0}',
       '.cr-field{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:9px;' + GLASS_SOFT + ';color:var(--dsw-alias-label-secondary);cursor:pointer}',
-      '.cr-field input{border:0;outline:0;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;font-variant-numeric:tabular-nums;color-scheme:light dark}',
+      '.cr-field input,.cr-field select{border:0;outline:0;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:12.5px;font-variant-numeric:tabular-nums;color-scheme:light dark}',
       '.cr-primary{height:34px;padding:0 18px;border-radius:10px;border:0;background:var(' + BRAND + ');color:#fff;font-weight:600;cursor:pointer;transition:filter .15s,opacity .15s}',
       '.cr-primary:hover:not(:disabled){filter:brightness(1.08)}',
       '.cr-primary:disabled{opacity:.4;cursor:default}',
@@ -546,9 +553,11 @@ window.__ModuleLoader__.load({
           name: 'main', key: PANEL_ID, locale: NS,
         }, Panel));
 
-        ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+        lifeGroupRegister(ctx, {
+          id: PANEL_ID, group: 'personal', order: 10, label: () => t('panel'), icon: PanelIcon, render: (p) => h(Panel, { ...p, t }),
+        }, () => ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
           name: 'sidebar.panellist', id: PANEL_ID, order: 20, label: () => t('panel'), locale: NS,
-        }, PanelIcon));
+        }, PanelIcon)));
       },
     };
   },

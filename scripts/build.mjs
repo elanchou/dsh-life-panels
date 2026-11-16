@@ -18,9 +18,11 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const check = process.argv.includes('--check');
 const KIT_MARKER = '    /* @kit */\n';
 const GLASS_MARKER = '    /* @glass */\n';
+const SUITE_MARKER = '    /* @suite */\n';
 
 const glass = await fs.readFile(path.join(root, 'shared/client/glass.js'), 'utf8');
 const kit = (await fs.readFile(path.join(root, 'shared/client/kit.js'), 'utf8')).replace(GLASS_MARKER, glass);
+const suite = await fs.readFile(path.join(root, 'shared/client/suite.js'), 'utf8');
 const hostShared = (await fs.readdir(path.join(root, 'shared/host'))).filter((f) => f.endsWith('.js'));
 const plugins = (await fs.readdir(path.join(root, 'plugins'), { withFileTypes: true })).filter((d) => d.isDirectory()).map((d) => d.name).sort();
 
@@ -52,9 +54,17 @@ for (const name of plugins) {
   for (const f of own) for (const s of await sharedImports(await fs.readFile(path.join(dir, f), 'utf8'))) needed.add(s);
   for (const s of needed) await emit(path.join(dir, s), await fs.readFile(path.join(root, 'shared/host', s), 'utf8'));
 
-  const src = await fs.readFile(path.join(dir, 'src/client.js'), 'utf8');
+  // A plugin without src/client.js ships its own client.js and only gets its shared host modules.
+  let src;
+  try { src = await fs.readFile(path.join(dir, 'src/client.js'), 'utf8'); } catch { src = null; }
+  if (src === null) continue;
   // A panel either takes the whole kit (which contains the glass styles) or only the glass styles.
-  const client = src.includes(KIT_MARKER) ? src.replace(KIT_MARKER, kit) : src.replace(GLASS_MARKER, glass);
+  let client = src.includes(KIT_MARKER) ? src.replace(KIT_MARKER, kit) : src.replace(GLASS_MARKER, glass);
+  client = client.replace(SUITE_MARKER, suite);
+  // `/* @include file.js */` splices plugins/<name>/src/<file.js> in place, for panels too large for one file.
+  for (const m of [...client.matchAll(/^ *\/\* @include ([\w.-]+) \*\/\n/gm)]) {
+    client = client.replace(m[0], await fs.readFile(path.join(dir, 'src', m[1]), 'utf8'));
+  }
   await emit(path.join(dir, 'client.js'), client);
 
   if (!check) {

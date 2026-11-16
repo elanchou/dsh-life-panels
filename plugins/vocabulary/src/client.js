@@ -2,6 +2,7 @@ window.__ModuleLoader__.load({
   id: '@local/vocabulary',
   factory(require) {
     /* @kit */
+    /* @suite */
 
     const PANEL_ID = 'vocabulary';
     const NS = 'vocabulary';
@@ -340,9 +341,11 @@ window.__ModuleLoader__.load({
         ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'vocabulary: dictionaries');
         const t = ctx.locale.bind(NS);
         ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS }, Panel));
-        ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+        lifeGroupRegister(ctx, {
+          id: PANEL_ID, group: 'personal', order: 30, label: () => t('panel'), icon: WordIcon, render: (p) => h(Panel, { ...p, t }),
+        }, () => ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
           name: 'sidebar.panellist', id: PANEL_ID, order: 26, label: () => t('panel'), locale: NS,
-        }, WordIcon));
+        }, WordIcon)));
         ctx.effect(() => () => { try { window.speechSynthesis && window.speechSynthesis.cancel(); } catch {} }, 'vocabulary: stop speech');
       },
     };

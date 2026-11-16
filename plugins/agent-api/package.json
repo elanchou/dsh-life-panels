@@ -1,0 +1,43 @@
+{
+  "name": "@local/agent-api",
+  "version": "1.0.1",
+  "description": "Let agents outside DSH (Muse, Claude, ChatGPT, scripts) read and change the life-panel data through an MCP endpoint or plain HTTP, with per-agent tokens (read-only or read-write), a call log, and an optional public https URL through a Cloudflare quick tunnel.",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/elanchou/dsh-life-panels.git",
+    "directory": "plugins/agent-api"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "server.js",
+    "policy.js",
+    "merge.js",
+    "common.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  }
+}

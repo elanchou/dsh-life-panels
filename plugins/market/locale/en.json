@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Market",
+    "description": "A stock, ETF and index watchlist for China A-shares, Hong Kong and US markets: search by name or code, daily charts, and optional positions for profit and loss. Data comes from a public endpoint, may be delayed, and is not investment advice. The agent can check quotes and manage the list."
+  }
+}

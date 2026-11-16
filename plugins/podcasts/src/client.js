@@ -2,6 +2,7 @@ window.__ModuleLoader__.load({
   id: '@local/podcasts',
   factory(require) {
     /* @kit */
+    /* @suite */
 
     const PANEL_ID = 'podcasts';
     const NS = 'podcasts';
@@ -569,9 +570,11 @@ window.__ModuleLoader__.load({
         ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'podcasts: dictionaries');
         const t = ctx.locale.bind(NS);
         ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS }, Panel));
-        ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+        lifeGroupRegister(ctx, {
+          id: PANEL_ID, group: 'news', order: 20, label: () => t('panel'), icon: PodcastIcon, render: (p) => h(Panel, { ...p, t }), badge: { subscribe: (fn) => { player.listeners.add(fn); return () => player.listeners.delete(fn); }, tone: () => (player.audio && !player.audio.paused ? 'brand' : null) },
+        }, () => ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
           name: 'sidebar.panellist', id: PANEL_ID, order: 24, label: () => t('panel'), locale: NS,
-        }, PodcastIcon));
+        }, PodcastIcon)));
         ctx.effect(() => () => {
           if (player.audio) { if (!player.audio.paused) saveProgress(); player.audio.pause(); player.audio.removeAttribute('src'); player.audio.load(); }
           player.audio = null; player.ep = null; player.listeners.clear();

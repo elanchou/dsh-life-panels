@@ -1,0 +1,4 @@
+- insert:
+    - id: livekit-telegram-voice
+      name: '@local/livekit-telegram-voice'
+      config: {}

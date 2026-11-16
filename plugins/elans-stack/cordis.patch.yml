@@ -1,0 +1,3 @@
+- insert:
+    - id: elans-stack
+      name: '@local/elans-stack'

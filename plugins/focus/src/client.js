@@ -2,6 +2,7 @@ window.__ModuleLoader__.load({
   id: '@local/focus',
   factory(require) {
     /* @kit */
+    /* @suite */
 
     const PANEL_ID = 'focus';
     const NS = 'focus';
@@ -470,9 +471,11 @@ window.__ModuleLoader__.load({
         ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'focus: dictionaries');
         const t = ctx.locale.bind(NS);
         ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS }, Panel));
-        ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+        lifeGroupRegister(ctx, {
+          id: PANEL_ID, group: 'personal', order: 40, label: () => t('panel'), icon: FocusIcon, render: (p) => h(Panel, { ...p, t }), badge: { subscribe: (fn) => { ctl.listeners.add(fn); return () => ctl.listeners.delete(fn); }, tone: () => { const tm = ctl.view && ctl.view.timer; return tm && tm.state === 'running' ? (tm.phase === 'focus' ? 'err' : 'ok') : null; } },
+        }, () => ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
           name: 'sidebar.panellist', id: PANEL_ID, order: 27, label: () => t('panel'), locale: NS,
-        }, FocusIcon));
+        }, FocusIcon)));
         // Keep the timer state current even while the panel is closed, so the chime, white noise and
         // sidebar dot follow a session the agent started from chat.
         ctx.effect(() => {

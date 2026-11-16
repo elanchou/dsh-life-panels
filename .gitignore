@@ -7,3 +7,9 @@ plugins/*/.build/
 node_modules/
 .DS_Store
 *.tmp
+plugins/personal-assistant/worker/node_modules/
+plugins/personal-assistant/worker/.venv/
+plugins/personal-assistant/worker/.env
+*.session
+*.session-journal
+__pycache__/

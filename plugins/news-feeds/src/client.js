@@ -2,6 +2,7 @@ window.__ModuleLoader__.load({
   id: '@local/news-feeds',
   factory(require) {
     /* @kit */
+    /* @suite */
 
     const PANEL_ID = 'news-feeds';
     const NS = 'newsFeeds';
@@ -277,9 +278,11 @@ window.__ModuleLoader__.load({
         ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'news-feeds: dictionaries');
         const t = ctx.locale.bind(NS);
         ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS }, Panel));
-        ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+        lifeGroupRegister(ctx, {
+          id: PANEL_ID, group: 'news', order: 10, label: () => t('panel'), icon: PanelGlyph('rss'), render: (p) => h(Panel, { ...p, t }),
+        }, () => ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
           name: 'sidebar.panellist', id: PANEL_ID, order: 21, label: () => t('panel'), locale: NS,
-        }, PanelGlyph('rss')));
+        }, PanelGlyph('rss'))));
       },
     };
   },

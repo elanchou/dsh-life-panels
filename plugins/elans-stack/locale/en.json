@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "ElansStack",
+    "description": "Elan's personal workspace in one sidebar entry. The first tab is a Today overview (weather, due reminders, trip, market, headlines, quick note), followed by Personal (calendar, trips, notes, vocabulary, focus), Feeds (news, market, podcasts, YouTube, reading list, TV) and Settings (cloud sync, LAN). Turn this plugin off and each panel returns to its own icon."
+  }
+}

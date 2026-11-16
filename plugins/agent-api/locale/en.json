@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Agent API",
+    "description": "Let agents outside DSH (Muse, Claude, ChatGPT, scripts) read and change the panel data through MCP or plain HTTP, with per-agent tokens (read-only or read-write), a call log, and an optional public https URL through a Cloudflare quick tunnel."
+  }
+}

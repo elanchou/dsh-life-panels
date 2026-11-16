@@ -46,6 +46,9 @@
     listeners.forEach((fn) => fn());
   }
 
+  const stack = []; // registrations made by the inject() call that is currently running
+  const notify = () => listeners.forEach((fn) => fn());
+
   function makeCtx(name) {
     const guard = (fn) => { try { return fn(); } catch (error) { problems.push(name + ': ' + (error && error.message)); console.error(name, error); return undefined; } };
     return {
@@ -53,12 +56,34 @@
       get(key) { return key === 'layout' ? { selectPanel: select } : null; },
       locale: { register(ns, d) { dicts.set(ns, d); return () => {}; }, bind },
       slots: {
-        inject(slot, fn) { guard(fn); },
+        // inject(slot, fn) runs fn and returns a disposer that removes whatever fn registered, as in the Harness.
+        inject(slot, fn) {
+          const made = [];
+          stack.push(made);
+          try { guard(fn); } finally { stack.pop(); }
+          return () => {
+            for (const undo of made.splice(0)) undo();
+            notify();
+          };
+        },
         register(opts, Comp) {
-          if (opts.name === 'main') mains.set(opts.key, { Comp, ns: opts.locale });
-          else if (opts.name === 'sidebar.panellist') rail.push({ id: opts.id, order: opts.order || 0, label: opts.label, Icon: Comp, ns: opts.locale });
-          else if (opts.name === 'shell.overlay') overlays.push({ id: opts.id, order: opts.order || 0, Comp });
-          return () => {};
+          const made = stack[stack.length - 1];
+          let undo = () => {};
+          if (opts.name === 'main') {
+            const entry = { Comp, ns: opts.locale };
+            mains.set(opts.key, entry);
+            undo = () => { if (mains.get(opts.key) === entry) mains.delete(opts.key); };
+          } else if (opts.name === 'sidebar.panellist') {
+            const entry = { id: opts.id, order: opts.order || 0, label: opts.label, Icon: Comp, ns: opts.locale };
+            rail.push(entry);
+            undo = () => { const i = rail.indexOf(entry); if (i >= 0) rail.splice(i, 1); };
+          } else if (opts.name === 'shell.overlay') {
+            const entry = { id: opts.id, order: opts.order || 0, Comp };
+            overlays.push(entry);
+            undo = () => { const i = overlays.indexOf(entry); if (i >= 0) overlays.splice(i, 1); };
+          }
+          if (made) made.push(undo);
+          return () => { undo(); notify(); };
         },
       },
     };
@@ -88,9 +113,7 @@
         } catch (error) { problems.push(name + ': ' + (error && error.message)); console.error(name, error); }
       }
     }
-    rail.sort((a, b) => a.order - b.order);
-    overlays.sort((a, b) => a.order - b.order);
-    if (!mains.has(active)) active = (rail.find((r) => mains.has(r.id)) || {}).id || null;
+    if (!mains.has(active)) active = (rail.slice().sort((a, b) => a.order - b.order).find((r) => mains.has(r.id)) || {}).id || null;
   }
 
   class Boundary extends React.Component {
@@ -120,7 +143,7 @@
     if (state.phase === 'error') return h('div', { className: 'lan-note' }, h('b', null, TEXT.failed), h('span', null, String(state.error && state.error.message)),
       h('button', { onClick: start, style: { padding: '8px 18px', borderRadius: 10, border: '1px solid var(--dsw-alias-border-l2)', background: 'var(--dsw-alias-bg-layer-2)', color: 'inherit', fontSize: 14 } }, TEXT.retry));
 
-    const items = rail.filter((r) => mains.has(r.id));
+    const items = rail.filter((r) => mains.has(r.id)).sort((a, b) => a.order - b.order);
     const cur = mains.get(active);
     return h('div', { className: 'lan-shell' },
       h('nav', { className: 'lan-rail', 'aria-label': 'Panels' }, items.map((r) => {
@@ -132,7 +155,7 @@
       h('main', { className: 'lan-main' },
         cur ? h(Boundary, { key: active }, h(cur.Comp, { t: bind(cur.ns) }))
           : h('div', { className: 'lan-note' }, h('b', null, TEXT.empty), h('span', null, TEXT.emptyHint))),
-      overlays.map((o) => h(Boundary, { key: o.id, quiet: true }, h(o.Comp))));
+      overlays.slice().sort((a, b) => a.order - b.order).map((o) => h(Boundary, { key: o.id, quiet: true }, h(o.Comp))));
   }
 
   ReactDOM.createRoot(document.getElementById('root')).render(h(App));

@@ -88,7 +88,8 @@ function replaceContents(target, source) {
 const LAN_KEY = Symbol.for('dsh.life-panels.lan');
 export function lanRegistry() {
   const g = globalThis;
-  if (!g[LAN_KEY]) g[LAN_KEY] = { runs: new Map(), raws: new Map() };
+  if (!g[LAN_KEY]) g[LAN_KEY] = { runs: new Map(), raws: new Map(), tools: new Map() };
+  if (!g[LAN_KEY].tools) g[LAN_KEY].tools = new Map();
   return g[LAN_KEY];
 }
 const CLIENT_FILE = fileURLToPath(new URL('./client.js', import.meta.url));
@@ -109,6 +110,18 @@ export function lanRaw(ctx, name, routePath, handler, label) {
     lanRegistry().raws.set(routePath, entry);
     return () => { const reg = lanRegistry(); if (reg.raws.get(routePath) === entry) reg.raws.delete(routePath); };
   }, label + ': lan raw');
+}
+
+/**
+ * Record an agent tool (its model-facing definition and the operation behind it) so the agent-api plugin can
+ * offer the same tool to agents outside DSH. Recording grants nothing: agent-api decides which tools it exposes.
+ */
+export function exposeTool(ctx, definition, run, label) {
+  ctx.effect(() => {
+    const entry = { name: definition.name, description: definition.description, parameters: definition.parameters, run, plugin: label };
+    lanRegistry().tools.set(definition.name, entry);
+    return () => { const reg = lanRegistry(); if (reg.tools.get(definition.name) === entry) reg.tools.delete(definition.name); };
+  }, label + ': external tool');
 }
 
 /** Authenticated JSON POST route used by the plugin's own Web UI. */
@@ -154,6 +167,7 @@ export function registerTool(ctx, definition, run, label) {
       return result;
     },
   }), label + ': tool');
+  exposeTool(ctx, definition, run, label);
 }
 
 export function errorText(error) {

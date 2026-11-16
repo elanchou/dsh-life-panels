@@ -2,6 +2,7 @@ window.__ModuleLoader__.load({
   id: '@local/iptv',
   factory(require) {
     /* @kit */
+    /* @suite */
 
     const PANEL_ID = 'iptv';
     const NS = 'iptv';
@@ -756,8 +757,7 @@ window.__ModuleLoader__.load({
       const drag = useRef(null);
       const show = !!snap.channel && !snap.panel && !snap.pip;
       const back = () => {
-        const layout = ui.ctx && ui.ctx.get('layout');
-        if (layout) { try { layout.selectPanel(PANEL_ID); } catch { /* panel not registered */ } }
+        lifeOpen(ui.ctx, PANEL_ID);
       };
       const onDown = (e) => {
         if (e.button !== 0 || (e.target.closest && e.target.closest('button'))) return;
@@ -1057,14 +1057,16 @@ window.__ModuleLoader__.load({
         engine.setT(t);
         ctx.effect(() => () => { engine.destroy(); ui.ctx = null; }, 'iptv: player');
         if (!window.__DSH_LAN__) ctx.effect(() => {
-          const rx = createRemoteReceiver(() => { const layout = ctx.get('layout'); if (layout) { try { layout.selectPanel(PANEL_ID); } catch { /* not registered */ } } });
+          const rx = createRemoteReceiver(() => lifeOpen(ctx, PANEL_ID));
           return () => rx.dispose();
         }, 'iptv: remote receiver');
         ctx.slots.inject('shell.overlay', () => ctx.slots.register({ name: 'shell.overlay', id: 'iptv-mini-player', order: 50 }, MiniPlayer));
         ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS }, Panel));
-        ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+        lifeGroupRegister(ctx, {
+          id: PANEL_ID, group: 'news', order: 50, label: () => t('panel'), icon: PanelGlyph('tv'), render: (p) => h(Panel, { ...p, t }),
+        }, () => ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
           name: 'sidebar.panellist', id: PANEL_ID, order: 29, label: () => t('panel'), locale: NS,
-        }, PanelGlyph('tv')));
+        }, PanelGlyph('tv'))));
       },
     };
   },

@@ -2,6 +2,7 @@ window.__ModuleLoader__.load({
   id: '@local/youtube',
   factory(require) {
     /* @kit */
+    /* @suite */
 
     const PANEL_ID = 'youtube';
     const NS = 'youtube';
@@ -330,9 +331,11 @@ window.__ModuleLoader__.load({
         ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'youtube: dictionaries');
         const t = ctx.locale.bind(NS);
         ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS }, Panel));
-        ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+        lifeGroupRegister(ctx, {
+          id: PANEL_ID, group: 'news', order: 30, label: () => t('panel'), icon: YtIcon, render: (p) => h(Panel, { ...p, t }),
+        }, () => ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
           name: 'sidebar.panellist', id: PANEL_ID, order: 28, label: () => t('panel'), locale: NS,
-        }, YtIcon));
+        }, YtIcon)));
       },
     };
   },

@@ -1,0 +1,44 @@
+{
+  "name": "@local/elans-stack",
+  "version": "1.9.0",
+  "description": "ElansStack: Elan's personal workspace in one sidebar entry. A Today overview (weather, due reminders, trip, market, headlines, quick note) plus tabs for Personal (calendar, trips, notes, vocabulary, focus), Feeds (news, market, podcasts, YouTube, reading list, TV) and Settings (cloud sync, LAN). Member panels keep working on their own when this plugin is off.",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/elanchou/dsh-life-panels.git",
+    "directory": "plugins/elans-stack"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "capture.js",
+    "client.js",
+    "common.js",
+    "cordis.patch.yml",
+    "icon.svg",
+    "index.js",
+    "locale/*.json",
+    "merge.js"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-workspace",
+        "@deepseek-ai/dsh-client-ui-session"
+      ]
+    }
+  }
+}

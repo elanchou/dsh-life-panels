@@ -3,13 +3,36 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { merge3, withFileLock } from './merge.js';
-import { lanExpose } from './common.js';
+import { lanExpose, exposeTool } from './common.js';
 
 export const inject = ['tools', 'webServer', 'connection'];
 
 const ROUTE = '/plugin-api/calendar-reminders';
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+export const REPEATS = ['daily', 'weekdays', 'weekly', 'monthly', 'yearly'];
+
+/**
+ * The next date of a repeating item after `from` (YYYY-MM-DD). Monthly and yearly keep the original day and
+ * fall back to the month's last day (Jan 31 -> Feb 28 -> Mar 31). `anchor` is the day of month to keep.
+ */
+export function nextDate(from, repeat, anchor) {
+  const [y, m, d] = from.split('-').map(Number);
+  const pad = (n) => String(n).padStart(2, '0');
+  const fmt = (x) => x.getFullYear() + '-' + pad(x.getMonth() + 1) + '-' + pad(x.getDate());
+  const day = anchor || d;
+  const clampDay = (yy, mm) => new Date(yy, mm, Math.min(day, new Date(yy, mm + 1, 0).getDate()));
+  if (repeat === 'daily') return fmt(new Date(y, m - 1, d + 1));
+  if (repeat === 'weekly') return fmt(new Date(y, m - 1, d + 7));
+  if (repeat === 'weekdays') {
+    const x = new Date(y, m - 1, d + 1);
+    while (x.getDay() === 0 || x.getDay() === 6) x.setDate(x.getDate() + 1);
+    return fmt(x);
+  }
+  if (repeat === 'monthly') return fmt(clampDay(y, m));
+  if (repeat === 'yearly') return fmt(clampDay(y + 1, m - 1));
+  return null;
+}
 
 function dataFile() {
   const home = process.env.DSH_HOME || path.join(os.homedir(), '.dsh');
@@ -93,6 +116,11 @@ function validate(input) {
     else out.time = String(input.time);
   }
   if (input.notes !== undefined) out.notes = String(input.notes).slice(0, 2000);
+  if (input.repeat !== undefined) {
+    if (input.repeat === null || input.repeat === '' || input.repeat === 'none') out.repeat = null;
+    else if (!REPEATS.includes(String(input.repeat))) return { error: 'repeat must be one of ' + REPEATS.join(', ') + ' or none' };
+    else out.repeat = String(input.repeat);
+  }
   return { value: out };
 }
 
@@ -159,6 +187,8 @@ export function apply(ctx) {
       if (checked.error) return { ok: false, error: checked.error };
       const now = new Date().toISOString();
       const item = { id: randomUUID(), title: '', notes: '', date: null, time: null, done: false, createdAt: now, updatedAt: now, ...checked.value };
+      if (item.repeat && !item.date) item.date = localToday(); // a repeating item needs a first date
+      if (!item.repeat) delete item.repeat;
       let warning = null;
       if (input.notify && agentId) warning = await createSchedule(item, agentId);
       else if (input.notify) warning = 'Chat notifications can only be created from an agent session.';
@@ -183,6 +213,23 @@ export function apply(ctx) {
       Object.assign(item, checked.value, { updatedAt: new Date().toISOString() });
       await store.save();
       return { ok: true, item };
+    }
+    if (action === 'complete' && item.repeat && item.date && !item.done) {
+      // A repeating item stays open and moves to its next date; a done copy keeps the history.
+      const now = new Date().toISOString();
+      await dropSchedule(item);
+      const doneCopy = { ...item, id: randomUUID(), done: true, createdAt: now, updatedAt: now, completedFrom: item.id };
+      delete doneCopy.repeat; delete doneCopy.scheduleId; delete doneCopy.sessionId;
+      items.push(doneCopy);
+      let next = nextDate(item.date, item.repeat, item.repeatDay);
+      const today = localToday();
+      // Catching up after days away: skip past dates so the next one is today or later.
+      for (let i = 0; next && next < today && i < 1000; i++) next = nextDate(next, item.repeat, item.repeatDay);
+      if (!item.repeatDay && (item.repeat === 'monthly' || item.repeat === 'yearly')) item.repeatDay = Number(item.date.slice(8, 10));
+      item.date = next;
+      item.updatedAt = now;
+      await store.save();
+      return { ok: true, item, completed: doneCopy, next };
     }
     if (action === 'complete' || action === 'reopen') {
       item.done = action === 'complete';
@@ -222,9 +269,9 @@ export function apply(ctx) {
   lanExpose(ctx, 'calendar-reminders', run, 'calendar-reminders');
 
   /* ---- Agent tool ---- */
-  ctx.effect(() => ctx.tools.register({
+  const toolDefinition = {
     name: 'calendar_reminders',
-    description: 'Manage the user\'s calendar and reminder list shown in the sidebar panel. Actions: list (optional scope: all|open|today|upcoming|overdue|done), add (title, optional date YYYY-MM-DD, time HH:mm, notes, notify), update (id plus changed fields), complete, reopen, delete (id). Set notify=true on add to also schedule a chat message at the due time in this session. Dates use the user\'s local time zone.',
+    description: 'Manage the user\'s calendar and reminder list shown in the sidebar panel. Actions: list (optional scope: all|open|today|upcoming|overdue|done), add (title, optional date YYYY-MM-DD, time HH:mm, notes, repeat daily|weekdays|weekly|monthly|yearly, notify), update (id plus changed fields), complete, reopen, delete (id). Set notify=true on add to also schedule a chat message at the due time in this session. Dates use the user\'s local time zone.',
     parameters: {
       type: 'object',
       properties: {
@@ -234,6 +281,7 @@ export function apply(ctx) {
         date: { type: 'string', description: 'Due date, YYYY-MM-DD. Empty string clears it on update.' },
         time: { type: 'string', description: 'Due time, HH:mm in 24-hour form. Empty string clears it on update.' },
         notes: { type: 'string', description: 'Free-form notes.' },
+        repeat: { type: 'string', enum: ['none', ...REPEATS], description: 'add/update: repeat rule. Completing a repeating item records a done copy and moves the item to its next date.' },
         notify: { type: 'boolean', description: 'On add: also create a chat notification in this session at date/time (09:00 when time is omitted).' },
         scope: { type: 'string', enum: ['all', 'open', 'today', 'upcoming', 'overdue', 'done'], description: 'On list: which items to return. Defaults to all.' },
       },
@@ -244,10 +292,14 @@ export function apply(ctx) {
       schema: { type: 'object' },
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
+  };
+  ctx.effect(() => ctx.tools.register({
+    ...toolDefinition,
     async execute(args, exec) {
       const result = await run(args || {}, exec && exec.agent ? exec.agent.id : undefined);
       if (!result.ok) throw new Error(result.error);
       return result;
     },
   }), 'calendar-reminders: tool');
+  exposeTool(ctx, toolDefinition, run, 'calendar-reminders');
 }

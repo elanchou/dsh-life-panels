@@ -17,7 +17,7 @@ export const newKey = () => randomBytes(16).toString('base64url');
 const COOKIE = 'dsh_lan';
 
 /** Not exposed to the LAN: the sync token store, the internal iCafe workflow, and this plugin's own settings. */
-export const DEFAULT_EXCLUDE = ['cloud-sync', 'icafe-workflow', 'lan-host'];
+export const DEFAULT_EXCLUDE = ['cloud-sync', 'icafe-workflow', 'lan-host', 'agent-api', 'personal-assistant'];
 
 export function lanAddresses() {
   const out = [];

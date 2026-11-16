@@ -2,6 +2,7 @@ window.__ModuleLoader__.load({
   id: '@local/lan-host',
   factory(require) {
     /* @kit */
+    /* @suite */
 
     const PANEL_ID = 'lan-host';
     const NS = 'lan-host';
@@ -30,6 +31,7 @@ window.__ModuleLoader__.load({
       'p.focus': '专注',
       'p.youtube': 'YouTube',
       'p.iptv': 'IPTV 电视',
+      'p.elans-stack': 'ElansStack（分组入口）',
       hint: '可以在对话里说“开启局域网访问”或“关掉局域网”',
     };
     const en = {
@@ -55,6 +57,7 @@ window.__ModuleLoader__.load({
       'p.focus': 'Focus',
       'p.youtube': 'YouTube',
       'p.iptv': 'TV',
+      'p.elans-stack': 'ElansStack (grouped entry)',
       hint: 'Ask in chat: “Turn on LAN access” or “Turn LAN access off”',
     };
 
@@ -170,9 +173,11 @@ window.__ModuleLoader__.load({
         ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'lan-host: dictionaries');
         const t = ctx.locale.bind(NS);
         ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS }, Panel));
-        ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+        lifeGroupRegister(ctx, {
+          id: PANEL_ID, group: 'settings', order: 20, label: () => t('panel'), icon: LanGlyph, render: (p) => h(Panel, { ...p, t }),
+        }, () => ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
           name: 'sidebar.panellist', id: PANEL_ID, order: 30, label: () => t('panel'), locale: NS,
-        }, LanGlyph));
+        }, LanGlyph)));
       },
     };
   },

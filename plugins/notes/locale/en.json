@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Notes",
+    "description": "Notes: a list beside an autosaving editor, with Markdown (headings, bold, lists, code, links), tickable checklists, #tags, search and pinning. The agent can save, look up and tick off notes from chat."
+  }
+}

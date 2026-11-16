@@ -2,6 +2,7 @@ window.__ModuleLoader__.load({
   id: '@local/travel-planner',
   factory(require) {
     /* @kit */
+    /* @suite */
 
     const PANEL_ID = 'travel-planner';
     const NS = 'travelPlanner';
@@ -429,9 +430,11 @@ window.__ModuleLoader__.load({
         ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'travel-planner: dictionaries');
         const t = ctx.locale.bind(NS);
         ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS }, Panel));
-        ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+        lifeGroupRegister(ctx, {
+          id: PANEL_ID, group: 'personal', order: 20, label: () => t('panel'), icon: PanelGlyph('plane'), render: (p) => h(Panel, { ...p, t }),
+        }, () => ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
           name: 'sidebar.panellist', id: PANEL_ID, order: 23, label: () => t('panel'), locale: NS,
-        }, PanelGlyph('plane')));
+        }, PanelGlyph('plane'))));
       },
     };
   },

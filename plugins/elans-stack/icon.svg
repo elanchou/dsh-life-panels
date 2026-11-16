@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ElansStack">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#9775fa"/>
+      <stop offset="1" stop-color="#5f3dc4"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="url(#bg)"/>
+  <rect x="13" y="13" width="17" height="17" rx="5" fill="#fff"/>
+  <rect x="34" y="13" width="17" height="17" rx="5" fill="#fff" fill-opacity=".55"/>
+  <rect x="13" y="34" width="17" height="17" rx="5" fill="#fff" fill-opacity=".55"/>
+  <rect x="34" y="34" width="17" height="17" rx="5" fill="#fff"/>
+</svg>

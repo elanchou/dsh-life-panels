@@ -1,6 +1,6 @@
 {
   "name": "dsh-life-panels",
-  "version": "1.6.0",
+  "version": "2.0.0",
   "private": true,
   "description": "Calendar, news, reading list, travel, podcast and GitHub cloud-sync plugins for DeepSeek Harness.",
   "license": "MIT",
@@ -11,6 +11,6 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "check": "node scripts/build.mjs --check",
-    "test": "node scripts/build.mjs && node --test test/*.test.mjs"
+    "test": "node scripts/build.mjs && node --test test/*.test.mjs plugins/personal-assistant/test/*.test.js"
   }
 }

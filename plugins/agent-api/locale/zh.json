@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Agent 接口",
+    "description": "让 DSH 之外的 Agent（Muse、Claude、ChatGPT、脚本）通过 MCP 或 HTTP 读写这些面板的数据。每个 Agent 一个令牌，可设只读，有调用记录，可选通过 Cloudflare 开一个公网 https 地址。"
+  }
+}
