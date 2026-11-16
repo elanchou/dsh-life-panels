@@ -1,6 +1,6 @@
 {
   "name": "@local/vocabulary",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "English vocabulary trainer with IELTS and TOEFL word books and spaced repetition: daily new words, reviews on a forgetting curve, pronunciation, and a personal word list the agent can add to and quiz from.",
   "private": true,
   "license": "MIT",

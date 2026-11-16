@@ -3,6 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { merge3, withFileLock } from './merge.js';
+import { lanExpose } from './common.js';
 
 export const inject = ['tools', 'webServer', 'connection'];
 
@@ -218,6 +219,7 @@ export function apply(ctx) {
       }
     },
   }), 'calendar-reminders: route');
+  lanExpose(ctx, 'calendar-reminders', run, 'calendar-reminders');
 
   /* ---- Agent tool ---- */
   ctx.effect(() => ctx.tools.register({

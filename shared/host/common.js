@@ -2,6 +2,7 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { merge3, withFileLock } from './merge.js';
 
 /** Shared Host helpers for the local life-panel plugins (calendar, news, reading, travel). */
@@ -79,6 +80,37 @@ function replaceContents(target, source) {
   Object.assign(target, source);
 }
 
+/**
+ * LAN registry. Every plugin records its UI operation (and any raw GET handler) in a process-wide table so the
+ * lan-host plugin can serve the same panels to another device on the local network. The table holds no secrets
+ * and grants nothing by itself: lan-host decides which plugins it exposes and authenticates every request.
+ */
+const LAN_KEY = Symbol.for('dsh.life-panels.lan');
+export function lanRegistry() {
+  const g = globalThis;
+  if (!g[LAN_KEY]) g[LAN_KEY] = { runs: new Map(), raws: new Map() };
+  return g[LAN_KEY];
+}
+const CLIENT_FILE = fileURLToPath(new URL('./client.js', import.meta.url));
+
+/** Record `run(input, agentId, via)` under the plugin name; `via.lan` is true for requests that arrive over the LAN. */
+export function lanExpose(ctx, name, run, label) {
+  ctx.effect(() => {
+    const entry = { name, run, clientFile: CLIENT_FILE };
+    lanRegistry().runs.set(name, entry);
+    return () => { const reg = lanRegistry(); if (reg.runs.get(name) === entry) reg.runs.delete(name); };
+  }, label + ': lan');
+}
+
+/** Record a raw `(req, res)` GET handler that the plugin also serves on its own web route. */
+export function lanRaw(ctx, name, routePath, handler, label) {
+  ctx.effect(() => {
+    const entry = { name, handler };
+    lanRegistry().raws.set(routePath, entry);
+    return () => { const reg = lanRegistry(); if (reg.raws.get(routePath) === entry) reg.raws.delete(routePath); };
+  }, label + ': lan raw');
+}
+
 /** Authenticated JSON POST route used by the plugin's own Web UI. */
 export function registerRoute(ctx, routePath, run, label) {
   ctx.effect(() => ctx.webServer.register({
@@ -105,6 +137,7 @@ export function registerRoute(ctx, routePath, run, label) {
       }
     },
   }), label + ': route');
+  lanExpose(ctx, routePath.split('/').filter(Boolean).pop(), run, label);
 }
 
 /** Agent tool that calls the same operation as the UI route. */

@@ -96,7 +96,16 @@ if (a === 'login') out({ status: '已登录', username: 'tester' });
 else if (a === 'card' && b === 'get') out({ code: 200, cards: val('--sequence').split(',').map((q) => ({ sequence: Number(q), title: '相册需求', status: '开发中', type: { name: q === '10' || q === '20' ? 'Feature' : 'Story' }, ...(q === '21' ? { parent: { sequence: 20 } } : {}), detail: '<p>做相册</p>' })) });
 else if (a === 'card' && b === 'query' && val('--iql').startsWith('父卡片编号')) out({ code: 200, total: 2, cards: [
   { sequence: 11, title: '列表页', status: '已完成', isFinishedStatus: true, type: { name: 'Task' } },
-  { sequence: 12, title: '详情页', status: '开发中', type: { name: 'Task' } }] });
+  { sequence: 12, title: '详情页', status: '开发中', type: { name: 'Task' } },
+  { sequence: 13, title: '子卡 Bug', status: '新建', type: { name: '线下BUG' } }] });
+else if (a === 'card' && b === 'query' && val('--iql').startsWith('需求FeatureID ~')) {
+  if (val('--space') === 'bad-pool') { process.stderr.write(JSON.stringify({ error: 'http_error', message: 'HTTP 400' })); process.exit(4); }
+  const fid = (v) => [{ propertyName: '需求FeatureID', displayValue: v }];
+  out({ code: 200, total: 3, cards: [
+    { sequence: 95, title: '闪退', status: '新建', type: { name: 'Bug' }, properties: fid('pan-10') },
+    { sequence: 96, title: '别的需求', status: '新建', type: { name: 'Bug' }, properties: fid('pan-101') },
+    { sequence: 97, title: '已关', status: '已关闭', isFinishedStatus: true, type: { name: 'Bug' }, properties: fid('pan-10') }] });
+}
 else if (a === 'card' && b === 'query' && val('--iql').startsWith('负责人 = currentUser OR RD')) out({ code: 200, total: 3, pageSize: 1, cards: [
   { sequence: 21, title: '子A', status: '开发中', type: { name: 'Story' }, parent: { sequence: 20 } },
   { sequence: 22, title: '子B', status: '开发中', type: { name: 'Task' }, parent: { sequence: 21 } },
@@ -105,7 +114,9 @@ else if (a === 'card' && b === 'query' && val('--iql').startsWith('类型 in ("F
   { sequence: 20, title: '特性', status: '开发中', type: { name: 'Feature' } },
   { sequence: 30, title: '旧特性', status: '已关闭', isFinishedStatus: true, type: { name: 'Feature' } }] });
 else if (a === 'card' && b === 'query') out({ code: 200, total: 2, cards: [
-  { sequence: 90, title: '崩溃', status: '新建', type: { name: 'Bug' } },
+  { sequence: 90, title: '崩溃', status: '新建', type: { name: 'Bug' }, properties: [{ propertyName: '需求FeatureID', displayValue: 'pan-10' }] },
+  { sequence: 92, title: '父卡片关联', status: '新建', type: { name: 'Bug' }, parent: { sequence: 10 } },
+  { sequence: 93, title: '无关', status: '新建', type: { name: 'Bug' } },
   { sequence: 91, title: '已修', status: '已关闭', isFinishedStatus: true, type: { name: 'Bug' } }] });
 else if (a === 'card' && b === 'create') {
   if (val('--title') === 'bad') { process.stderr.write(JSON.stringify({ error: 'http_error', message: 'boom' })); process.exit(4); }
@@ -137,7 +148,13 @@ test('icafe-workflow tracks a requirement and creates child cards through icafe-
   await assert.rejects(run({ action: 'req_update', id: added.requirement.id, docs: [{ url: 'javascript:alert(1)' }] }), /http/);
   await assert.rejects(run({ action: 'req_update', id: added.requirement.id, docs: 'x' }), /docs/);
   const detail = await run({ action: 'req_get', id: added.requirement.id });
-  assert.deepEqual(detail.children.map((c) => [c.sequence, c.finished]), [[11, true], [12, false]]);
+  assert.deepEqual(detail.children.map((c) => [c.sequence, c.finished]), [[11, true], [12, false], [13, false]]);
+  // Related bugs: 需求FeatureID ~ "pan-10" in the default space (pan-101 is a substring hit and dropped), plus bug-like children.
+  assert.deepEqual(detail.bugs.map((b) => [b.space, b.sequence, b.requirementId === added.requirement.id]), [['pan', 95, true], ['pan', 13, true]]);
+  assert.equal(detail.bugs[0].featureId, 'pan-10');
+  assert.ok((await cli.calls()).some((c) => c[1] === 'query' && c[c.indexOf('--iql') + 1] === '需求FeatureID ~ "pan-10"'));
+  const detailAll = await run({ action: 'req_get', id: added.requirement.id, includeFinished: true });
+  assert.deepEqual(detailAll.bugs.map((b) => b.sequence).sort(), [13, 95, 97]);
   assert.equal((await run({ action: 'req_list' })).requirements[0].childDone, 1);
 
   const made = await run({ action: 'create_children', requirementId: added.requirement.id, items: [{ title: '分享页', detail: '范围：\n- 生成链接\n- 复制' }, { title: 'bad' }] });
@@ -161,12 +178,25 @@ test('icafe-workflow tracks a requirement and creates child cards through icafe-
   await run({ action: 'req_remove', id: imp.added[0].id });
 
   const bugs = await run({ action: 'bugs' });
-  assert.deepEqual(bugs.bugs.map((b) => b.sequence), [90]);
+  assert.deepEqual(bugs.bugs.map((b) => [b.sequence, b.featureId, b.requirementId === added.requirement.id]), [[90, 'pan-10', true], [92, '', true], [93, '', false]]);
+  assert.equal(bugs.bugs[2].requirementId, '');
+  assert.equal(bugs.bugs[0].requirementSlug, 'pan-10');
   await run({ action: 'settings', bugSpaces: 'qa-pool, pan' });
   const multi = await run({ action: 'bugs' });
   assert.deepEqual(multi.spaces, ['qa-pool', 'pan']);
-  assert.deepEqual(multi.bugs.map((b) => b.space).sort(), ['pan', 'qa-pool']);
+  assert.deepEqual([...new Set(multi.bugs.map((b) => b.space))].sort(), ['pan', 'qa-pool']);
+  // A bug in another space still links to the requirement through 需求FeatureID.
+  assert.ok(multi.bugs.some((b) => b.space === 'qa-pool' && b.sequence === 90 && b.requirementId === added.requirement.id));
   assert.equal(multi.queries.pan, '负责人 = currentUser AND 类型 in ("线下BUG")');
+  const pooled = await run({ action: 'req_get', id: added.requirement.id });
+  assert.deepEqual(pooled.bugSpaces, ['qa-pool', 'pan']);
+  assert.deepEqual(pooled.bugs.map((b) => b.space + '-' + b.sequence), ['qa-pool-95', 'pan-95', 'pan-13']);
+  await run({ action: 'settings', bugSpaces: 'bad-pool, qa-pool' });
+  const broken = await run({ action: 'req_get', id: added.requirement.id });
+  assert.equal(broken.ok, true);
+  assert.equal(broken.errors[0].space, 'bad-pool');
+  assert.deepEqual(broken.bugs.map((b) => b.space + '-' + b.sequence), ['qa-pool-95', 'pan-13']);
+  await run({ action: 'settings', bugSpaces: 'qa-pool, pan' });
   await run({ action: 'settings', bugScope: 'both', bugTypes: ['story'] });
   assert.equal((await run({ action: 'bugs', space: 'pan' })).queries.pan, '(负责人 = currentUser OR 创建人 = currentUser) AND 类型 in ("Story")');
   await run({ action: 'settings', bugTypes: ['Nope'] });

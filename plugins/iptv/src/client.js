@@ -23,6 +23,7 @@ window.__ModuleLoader__.load({
       reload: '刷新', done: '完成', fullscreen: '全屏', exitFullscreen: '退出全屏', pip: '画中画', mute: '静音', unmute: '取消静音',
       play: '播放', pause: '暂停', volume: '音量', live: '直播', guide: '频道列表', closeGuide: '收起频道列表', settings: '播放列表与代理',
       shortcuts: '↑↓ 换台 · 空格 暂停 · F 全屏 · M 静音 · L 列表',
+      remote: '手机遥控器', remoteHint: '手机和电脑连同一个 Wi-Fi，用手机相机扫码打开遥控器。扫码即配对，不需要登录。', remoteOn: '开启遥控', remoteOff: '遥控已关闭', remoteStarting: '启动中…', remoteRotate: '更换二维码', remoteRotateHint: '更换后旧链接立即失效，已连接的手机需要重新扫码', remotePhones: '{n} 台手机已连接', remoteNoPhone: '还没有手机连接', remoteNoLan: '没找到局域网地址：请确认电脑已连上 Wi-Fi 或有线网络', remoteOther: '其他地址', remoteCopy: '复制链接', remoteWarn: '拿到这个链接的人都能遥控电视（不能访问电脑上的其他内容），不要发给别人。', remoteCmd: '遥控：{cmd}', noChannelN: '没有第 {n} 个频道',
       inPip: '画中画播放中', exitPip: '退出画中画', backToTv: '回到电视', closePlayer: '关闭播放', miniDrag: '拖动小窗',
       proxy: '网络代理', proxyHint: '直播流和播放列表从本机发出请求，可走 HTTP / HTTPS / SOCKS5 代理',
       proxyUrl: '代理地址，如 http://127.0.0.1:7890 或 socks5://127.0.0.1:1080', proxyOn: '启用代理', proxyLists: '播放列表也走代理',
@@ -42,6 +43,7 @@ window.__ModuleLoader__.load({
       reload: 'Refresh', done: 'Done', fullscreen: 'Fullscreen', exitFullscreen: 'Exit fullscreen', pip: 'Picture in picture', mute: 'Mute', unmute: 'Unmute',
       play: 'Play', pause: 'Pause', volume: 'Volume', live: 'Live', guide: 'Channel guide', closeGuide: 'Hide the guide', settings: 'Playlists and proxy',
       shortcuts: '↑↓ channel · Space pause · F fullscreen · M mute · L guide',
+      remote: 'Phone remote', remoteHint: 'Put the phone on the same Wi-Fi and scan the code with its camera. Scanning pairs the phone; no sign-in is needed.', remoteOn: 'Enable remote', remoteOff: 'Remote is off', remoteStarting: 'Starting…', remoteRotate: 'New QR code', remoteRotateHint: 'Old links stop working at once; connected phones must scan again', remotePhones: '{n} phone(s) connected', remoteNoPhone: 'No phone connected yet', remoteNoLan: 'No LAN address found: connect this computer to Wi-Fi or Ethernet', remoteOther: 'Other addresses', remoteCopy: 'Copy link', remoteWarn: 'Anyone with this link can control the TV (nothing else on this computer). Do not share it.', remoteCmd: 'Remote: {cmd}', noChannelN: 'No channel {n}',
       inPip: 'In picture in picture', exitPip: 'Exit picture in picture', backToTv: 'Back to TV', closePlayer: 'Stop playback', miniDrag: 'Drag the mini player',
       proxy: 'Network proxy', proxyHint: 'Streams and playlists are requested from this computer and can go through an HTTP, HTTPS or SOCKS5 proxy',
       proxyUrl: 'Proxy address, e.g. http://127.0.0.1:7890 or socks5://127.0.0.1:1080', proxyOn: 'Use proxy', proxyLists: 'Also for playlists',
@@ -59,6 +61,7 @@ window.__ModuleLoader__.load({
     ICONS.volume = ['M4 10v4h4l5 4V6l-5 4z', 'M16.5 8.5a5 5 0 0 1 0 7', 'M19 6a8.5 8.5 0 0 1 0 12'];
     ICONS.mute = ['M4 10v4h4l5 4V6l-5 4z', 'M17 9.5l4.5 5', 'M21.5 9.5l-4.5 5'];
     ICONS.copy = ['M9 9h10v11H9z', 'M5 15V4h10'];
+    ICONS.remote = ['M8 2.5h8a2 2 0 0 1 2 2v15a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2v-15a2 2 0 0 1 2-2z', 'M12 6.5h.01', 'M12 10a2 2 0 1 0 0 4a2 2 0 1 0 0-4', 'M10 17.5h4'];
     ICONS.list = ['M9 6h11', 'M9 12h11', 'M9 18h11', 'M4.5 6h.01', 'M4.5 12h.01', 'M4.5 18h.01'];
     ICONS.up = ['M6 15l6-6 6 6'];
 
@@ -204,7 +207,100 @@ window.__ModuleLoader__.load({
       };
     }
     const engine = createEngine();
-    const ui = { ctx: null, restored: false, mini: { right: 24, bottom: 24 } };
+    const ui = { ctx: null, restored: false, mini: { right: 24, bottom: 24 }, lineup: [], listeners: new Set() };
+    const emit = (type, data) => { for (const fn of [...ui.listeners]) fn(type, data); };
+
+    /**
+     * Page-wide remote receiver. It long-polls the Host for commands from the LAN remote page and reports the
+     * now-playing state back, so a phone can control the TV whether the panel, the mini player or picture in
+     * picture is showing. Runs outside React and stops when the plugin unloads.
+     */
+    function createRemoteReceiver(selectPanel) {
+      const tab = Math.random().toString(36).slice(2, 10);
+      let alive = true;
+      let enabled = false;
+      let since = -1;
+      let pushTimer = 0;
+      let lastPushed = '';
+      async function lineup() {
+        if (ui.lineup.length) return ui.lineup;
+        try { const r = await call({ action: 'channels', limit: 500 }); ui.lineup = r.items || []; } catch { /* keep empty */ }
+        return ui.lineup;
+      }
+      const indexOf = (c) => (c ? ui.lineup.findIndex((x) => x.id === c.id) : -1);
+      function tune(c, n) {
+        ui.restored = true;
+        engine.play(c);
+        emit('tuned', { c, n });
+        call({ action: 'last', id: c.id, name: c.name, url: c.url, logo: c.logo, group: c.group }).catch(() => {});
+      }
+      async function step(d) {
+        const list = await lineup();
+        if (!list.length) return;
+        const cur = indexOf(engine.get().channel);
+        const i = cur < 0 ? (d > 0 ? 0 : list.length - 1) : (cur + d + list.length) % list.length;
+        tune(list[i], i + 1);
+      }
+      async function apply(cmd) {
+        const snap = engine.get();
+        switch (cmd.cmd) {
+          case 'toggle': if (snap.channel) engine.toggle(); else await step(1); break;
+          case 'play': if (!snap.channel) await step(1); else if (snap.paused) engine.toggle(); break;
+          case 'pause': if (snap.channel && !snap.paused) engine.toggle(); break;
+          case 'next': await step(1); break;
+          case 'prev': await step(-1); break;
+          case 'tune': if (cmd.channel && cmd.channel.url) { await lineup(); const i = indexOf(cmd.channel); tune(cmd.channel, i >= 0 ? i + 1 : null); } break;
+          case 'number': { const list = await lineup(); const c = list[cmd.n - 1]; if (c) tune(c, cmd.n); else emit('toast', { key: 'noChannelN', n: cmd.n }); break; }
+          case 'volume': engine.setVolume(Math.max(0, Math.min(1, Number(cmd.value) || 0))); break;
+          case 'volume_up': engine.setVolume(Math.min(1, Math.round(((snap.muted ? 0 : snap.volume) + 0.1) * 10) / 10)); break;
+          case 'volume_down': engine.setVolume(Math.max(0, Math.round(((snap.muted ? 0 : snap.volume) - 0.1) * 10) / 10)); break;
+          case 'mute': engine.setMuted(!snap.muted); break;
+          case 'stop': engine.stop(); break;
+          case 'show': selectPanel(); break;
+          case 'guide': selectPanel(); emit('guide'); break;
+          default: break;
+        }
+        emit('remote', cmd);
+      }
+      function snapshot() {
+        const s0 = engine.get();
+        const c = s0.channel;
+        return {
+          channel: c ? { id: c.id, name: c.name, logo: c.logo, group: c.group } : null,
+          state: s0.state, error: s0.error, paused: s0.paused, muted: s0.muted, volume: s0.volume,
+          index: indexOf(c), panel: s0.panel, pip: s0.pip,
+        };
+      }
+      function push(force) {
+        if (!enabled || !alive) return;
+        clearTimeout(pushTimer);
+        pushTimer = setTimeout(() => {
+          const st = snapshot();
+          const key = JSON.stringify(st);
+          if (!force && key === lastPushed) return;
+          lastPushed = key;
+          call({ action: 'remote_state', state: st }).catch(() => { lastPushed = ''; });
+        }, 250);
+      }
+      const unsub = engine.subscribe(() => push(false));
+      ui.pushRemote = () => push(true);
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      (async function loop() {
+        while (alive) {
+          try {
+            const r = await call({ action: 'remote_poll', tab, since, wait: 25000 });
+            if (!alive) break;
+            const was = enabled;
+            enabled = !!r.enabled;
+            if (!enabled) { since = -1; await sleep(15000); continue; }
+            if (!was) push(true);
+            if (since >= 0) for (const c of r.cmds || []) { if (c.seq > since) await apply(c).catch(() => {}); }
+            since = r.seq;
+          } catch { if (alive) await sleep(3000); }
+        }
+      })();
+      return { dispose() { alive = false; clearTimeout(pushTimer); unsub(); ui.pushRemote = null; } };
+    }
 
     function useEngine() {
       if (typeof React.useSyncExternalStore === 'function') return React.useSyncExternalStore(engine.subscribe, engine.get, engine.get);
@@ -275,6 +371,7 @@ window.__ModuleLoader__.load({
     }
 
     function ProxySettings(props) {
+      if (window.__DSH_LAN__) return null; // the proxy belongs to the computer
       const { t, onSaved } = props;
       const [cfg, setCfg] = useState(null);
       const [url, setUrl] = useState('');
@@ -307,6 +404,48 @@ window.__ModuleLoader__.load({
           h('button', { type: 'submit', className: 'tv-pill-btn is-primary', disabled: !!busy || !dirty }, t('proxySave'))),
         h('label', { className: 'tv-toggle is-sub' }, h(Switch, { on: cfg.playlists, label: t('proxyLists'), disabled: !!busy, onChange: (on) => save({ proxyPlaylists: on }) }), t('proxyLists')),
         msg ? h('div', { className: 'tv-msg' + (msg.ok ? '' : ' is-error') }, msg.text) : null);
+    }
+
+    function RemoteSheet(props) {
+      const { t, onClose } = props;
+      const [info, setInfo] = useState(null);
+      const [busy, setBusy] = useState(false);
+      const [msg, setMsg] = useState(null);
+      const [copied, setCopied] = useState(false);
+      const refresh = useCallback(async (op) => {
+        if (op) { setBusy(true); setMsg(null); }
+        try { const r = await call({ action: 'remote', op: op || 'status' }); setInfo(r.remote); if (op === 'enable' && ui.pushRemote) ui.pushRemote(); }
+        catch (e) { setMsg(e.message); } finally { if (op) setBusy(false); }
+      }, []);
+      useEffect(() => { refresh(); const id = setInterval(() => refresh(), 4000); return () => clearInterval(id); }, [refresh]);
+      const copy = async () => { try { await navigator.clipboard.writeText(info.url); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* blocked */ } };
+      const on = !!(info && info.enabled);
+      return h('div', { className: 'tv-sheet-wrap', onClick: (e) => { if (e.target === e.currentTarget) onClose(); } },
+        h('div', { className: 'tv-sheet tv-remote-sheet', role: 'dialog', 'aria-modal': true, 'aria-label': t('remote') },
+          h('div', { className: 'tv-sheet-head' },
+            h('h2', null, t('remote')),
+            h('div', { className: 'tv-sheet-tools' },
+              info ? h('label', { className: 'tv-toggle' }, h(Switch, { on, label: t('remoteOn'), disabled: busy, onChange: (v) => refresh(v ? 'enable' : 'disable') }), t('remoteOn')) : null,
+              h('button', { type: 'button', className: 'tv-pill-btn', onClick: onClose }, t('done')))),
+          h('div', { className: 'tv-sheet-body' },
+            !info ? h('div', { className: 'tv-skel', style: { height: 220 } })
+              : !on ? h('div', { className: 'tv-remote-off' },
+                h('span', { className: 'tv-hero-mark' }, h(Icon, { name: 'remote', size: 36, stroke: 1.5 })),
+                h('p', null, t('remoteHint')),
+                h('button', { type: 'button', className: 'tv-pill-btn is-primary', disabled: busy, onClick: () => refresh('enable') }, busy ? t('remoteStarting') : t('remoteOn')))
+                : h('div', { className: 'tv-remote' },
+                  h('div', { className: 'tv-qr' },
+                    info.qr ? h('svg', { viewBox: '0 0 ' + info.qr.size + ' ' + info.qr.size, width: 232, height: 232, shapeRendering: 'crispEdges', role: 'img', 'aria-label': info.url },
+                      h('rect', { width: info.qr.size, height: info.qr.size, fill: '#fff' }), h('path', { d: info.qr.d, fill: '#0b0c10' }))
+                      : h('div', { className: 'tv-qr-none' }, h(Icon, { name: 'alert', size: 22 }), h('span', null, info.error || t('remoteNoLan')))),
+                  h('div', { className: 'tv-remote-info' },
+                    h('p', { className: 'tv-remote-hint' }, t('remoteHint')),
+                    info.url ? h('div', { className: 'tv-remote-url' }, h('code', null, info.url.replace(/\?k=.*/, '')), h('button', { type: 'button', className: 'tv-pill-btn', onClick: copy }, copied ? t('copied') : t('remoteCopy'))) : null,
+                    h('div', { className: 'tv-remote-status' + (info.phones ? ' is-on' : '') }, h('i'), info.phones ? t('remotePhones', { n: info.phones }) : t('remoteNoPhone')),
+                    info.addresses && info.addresses.length > 1 ? h('div', { className: 'tv-remote-alt' }, t('remoteOther') + '：' + info.addresses.slice(1).map((a) => a.address + ':' + info.port).join('  ·  ')) : null,
+                    h('p', { className: 'tv-remote-warn' }, t('remoteWarn')),
+                    h('button', { type: 'button', className: 'tv-pill-btn', disabled: busy, title: t('remoteRotateHint'), onClick: () => refresh('rotate_key') }, h(Icon, { name: 'refresh', size: 14 }), t('remoteRotate')))),
+            msg ? h('div', { className: 'tv-msg is-error' }, msg) : null)));
     }
 
     function SettingsSheet(props) {
@@ -361,6 +500,7 @@ window.__ModuleLoader__.load({
       const [error, setError] = useState(null);
       const [busy, setBusy] = useState(false);
       const [sheet, setSheet] = useState(false);
+      const [remoteOpen, setRemoteOpen] = useState(false);
       const [lists, setLists] = useState([]);
       const [favIds, setFavIds] = useState({});
       const [guide, setGuideState] = useState(session.guide);
@@ -391,10 +531,21 @@ window.__ModuleLoader__.load({
           const r = await call({ action: 'channels', favorites: tab === 'fav', group: group || undefined, query: debounced || undefined, limit, refresh: !!refresh });
           if (!alive.current || mine !== seq.current) return;
           setData(r); setError(null); setFavIds({});
+          if (!group && !debounced && tab === 'all' && r.items && r.items.length) ui.lineup = r.items;
         } catch (e) { if (alive.current && mine === seq.current) setError(t('loadFailed', { error: e.message })); }
         finally { if (alive.current && mine === seq.current) setBusy(false); }
       }, [tab, group, debounced, limit, t]);
       useEffect(() => { load(false); }, [load]);
+      useEffect(() => {
+        const fn = (type, d) => {
+          if (type === 'tuned') { setOsd({ n: d.n || null, c: d.c }); wake(); }
+          else if (type === 'guide') { setGuide(true); wake(); }
+          else if (type === 'toast') setError(t(d.key, d));
+          else if (type === 'remote') wake();
+        };
+        ui.listeners.add(fn);
+        return () => { ui.listeners.delete(fn); };
+      }, []);
       const loadLists = useCallback(async () => {
         try { const r = await call({ action: 'playlists' }); if (alive.current) setLists(r.playlists); } catch { /* shown by load() */ }
       }, []);
@@ -414,7 +565,7 @@ window.__ModuleLoader__.load({
         idleTimer.current = setTimeout(() => { if (alive.current) setIdle(true); }, IDLE_MS);
       }, []);
       useEffect(() => { wake(); }, [current && current.id, wake]);
-      const chromeHidden = idle && play.state === 'playing' && !play.paused && !sheet;
+      const chromeHidden = idle && play.state === 'playing' && !play.paused && !sheet && !remoteOpen;
 
       useEffect(() => {
         const onFs = () => setFs(document.fullscreenElement === rootRef.current);
@@ -466,7 +617,7 @@ window.__ModuleLoader__.load({
       };
 
       const keys = useRef({});
-      keys.current = { step, togglePlay, toggleFs, setMuted, setGuide, guide, muted, sheet, setSheet, wake };
+      keys.current = { step, togglePlay, toggleFs, setMuted, setGuide, guide, muted, sheet: sheet || remoteOpen, setSheet: (v) => { setSheet(v); setRemoteOpen(v); }, wake };
       useEffect(() => {
         const onKey = (e) => {
           const k = keys.current;
@@ -492,10 +643,22 @@ window.__ModuleLoader__.load({
 
       useEffect(() => {
         if (!current || !listRef.current) return;
-        const el = listRef.current.querySelector('[data-id="' + current.id + '"]');
-        if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest' });
+        const box = listRef.current;
+        const el = box.querySelector('[data-id="' + current.id + '"]');
+        if (!el || !guide) return;
+        // Scroll the list itself; scrollIntoView would also scroll the (overflow:hidden) panel when the guide is off-screen.
+        const top = el.offsetTop - box.offsetTop;
+        if (top < box.scrollTop) box.scrollTop = Math.max(0, top - 6);
+        else if (top + el.offsetHeight > box.scrollTop + box.clientHeight) box.scrollTop = top + el.offsetHeight - box.clientHeight + 6;
       }, [current && current.id, guide]);
 
+      useEffect(() => {
+        const root = rootRef.current;
+        if (!root) return undefined;
+        const snap = () => { if (root.scrollLeft || root.scrollTop) { root.scrollLeft = 0; root.scrollTop = 0; } };
+        root.addEventListener('scroll', snap);
+        return () => root.removeEventListener('scroll', snap);
+      }, []);
       const ambient = current && current.logo ? current.logo : null;
       const proxy = data && data.proxy;
       const cls = 'tv-root' + (guide ? ' has-guide' : '') + (chromeHidden ? ' is-idle' : '') + (fs ? ' is-fs' : '');
@@ -551,6 +714,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'tv-brand' }, h('span', { className: 'tv-brand-mark' }, h(Icon, { name: 'tv', size: 16, stroke: 2 })), t('title'),
             proxy ? h('span', { className: 'tv-tag' + (proxy.enabled ? ' is-brand' : ''), title: proxy.enabled ? proxy.url : '' }, proxy.enabled ? t('proxyBadge') : t('proxyOff')) : null),
           h('div', { className: 'tv-top-tools' },
+            window.__DSH_LAN__ ? null : h(Btn, { icon: 'remote', size: 18, label: t('remote'), onClick: () => setRemoteOpen(true) }),
             h(Btn, { icon: 'settings', size: 18, label: t('settings'), onClick: () => setSheet(true) }),
             h(Btn, { icon: 'list', size: 18, label: guide ? t('closeGuide') : t('guide'), on: guide, pressed: guide, onClick: () => setGuide(!guide) }))),
         current ? h('footer', { className: 'tv-bottom tv-chrome' },
@@ -577,7 +741,8 @@ window.__ModuleLoader__.load({
         error ? h('div', { className: 'tv-toast', role: 'alert' }, h(Icon, { name: 'alert', size: 15 }), h('span', null, error),
           h('button', { type: 'button', onClick: () => load(true) }, t('retry')), h('button', { type: 'button', 'aria-label': 'Close', onClick: () => setError(null) }, h(Icon, { name: 'x', size: 13 }))) : null,
         guidePanel,
-        sheet ? h(SettingsSheet, { t, lists, onChange: () => { loadLists(); load(true); }, onClose: () => setSheet(false) }) : null);
+        sheet ? h(SettingsSheet, { t, lists, onChange: () => { ui.lineup = []; loadLists(); load(true); }, onClose: () => setSheet(false) }) : null,
+        remoteOpen ? h(RemoteSheet, { t, onClose: () => setRemoteOpen(false) }) : null);
     }
 
     /**
@@ -647,7 +812,8 @@ window.__ModuleLoader__.load({
       '.tvm:active{cursor:grabbing}',
       '@keyframes tvm-in{from{opacity:0;transform:translateY(10px) scale(.97)}}',
       '.tvm *{box-sizing:border-box}',
-      '.tvm button{font:inherit;color:inherit}',
+      // :where() keeps the reset at element specificity so .tvm-play and .tvm-btn can set their own colours.
+      ':where(.tvm) :where(button){font:inherit;color:#f4f5f8}',
       '.tvm-screen{position:relative;aspect-ratio:16/9;background:#000}',
       '.tvm-vhost{position:absolute;inset:0}',
       '.tvm-top{position:absolute;top:0;left:0;right:0;display:flex;justify-content:flex-end;gap:4px;padding:8px;background:linear-gradient(rgba(0,0,0,.55),transparent);opacity:0;transition:opacity .2s}',
@@ -680,7 +846,7 @@ window.__ModuleLoader__.load({
     const GW = '372px';
 
     const CSS = [
-      '.tv-root{container-type:inline-size;position:relative;height:100%;overflow:hidden;background:#05060a;color:' + INK + ';font-size:13px;isolation:isolate;--tv-gw:' + GW + ';--tv-brand:' + BRANDV + '}',
+      '.tv-root{container-type:inline-size;position:relative;height:100%;overflow:hidden;overflow:clip;background:#05060a;color:' + INK + ';font-size:13px;isolation:isolate;--tv-gw:' + GW + ';--tv-brand:' + BRANDV + '}',
       '.tv-root *,.tv-root *::before,.tv-root *::after{box-sizing:border-box}',
       // :where() keeps the reset at element specificity so every control class can set its own colour.
       ':where(.tv-root) :where(button,input,select){font:inherit}',
@@ -831,6 +997,25 @@ window.__ModuleLoader__.load({
       '.tv-sheet-head{display:flex;align-items:center;justify-content:space-between;padding:18px 20px 14px;border-bottom:1px solid rgba(255,255,255,.07)}',
       '.tv-sheet-head h2{margin:0;font-size:17px;font-weight:650}',
       '.tv-sheet-body{overflow:auto;padding:16px 20px 22px;display:flex;flex-direction:column;gap:14px}',
+      '.tv-sheet-tools{display:flex;align-items:center;gap:14px}',
+      '.tv-remote-sheet{width:min(680px,100%)}',
+      '.tv-remote{display:flex;gap:22px;align-items:flex-start}',
+      '@container (max-width:620px){.tv-remote{flex-direction:column;align-items:center}}',
+      '.tv-qr{flex:none;width:252px;height:252px;padding:10px;border-radius:20px;background:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 20px 50px -20px rgba(0,0,0,.8)}',
+      '.tv-qr svg{display:block;width:100%;height:100%}',
+      '.tv-qr-none{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px;text-align:center;color:#5b5e6b;font-size:12.5px}',
+      '.tv-remote-info{flex:1;min-width:0;display:flex;flex-direction:column;gap:12px;align-items:flex-start}',
+      '.tv-remote-hint{margin:0;font-size:14px;line-height:22px;color:' + INK + '}',
+      '.tv-remote-url{display:flex;align-items:center;gap:8px;max-width:100%}',
+      '.tv-remote-url code{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:600 13px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;padding:7px 10px;border-radius:10px;background:rgba(255,255,255,.07);color:' + INK + '}',
+      '.tv-remote-status{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;color:' + INK2 + '}',
+      '.tv-remote-status i{width:8px;height:8px;border-radius:50%;background:' + INK3 + '}',
+      '.tv-remote-status.is-on{color:#6be3a4}',
+      '.tv-remote-status.is-on i{background:#3ddc97;box-shadow:0 0 8px #3ddc97}',
+      '.tv-remote-alt{font-size:11.5px;color:' + INK3 + ';word-break:break-all}',
+      '.tv-remote-warn{margin:0;font-size:11.5px;line-height:18px;color:' + INK3 + '}',
+      '.tv-remote-off{display:flex;flex-direction:column;align-items:center;gap:14px;padding:26px 10px;text-align:center}',
+      '.tv-remote-off p{margin:0;max-width:420px;color:' + INK2 + ';font-size:13.5px;line-height:21px}',
       '.tv-sec{display:flex;flex-direction:column;gap:10px;padding:14px;border-radius:16px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.06)}',
       '.tv-sec-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}',
       '.tv-sec-head h3{margin:0;font-size:13.5px;font-weight:650}',
@@ -871,6 +1056,10 @@ window.__ModuleLoader__.load({
         ui.ctx = ctx;
         engine.setT(t);
         ctx.effect(() => () => { engine.destroy(); ui.ctx = null; }, 'iptv: player');
+        if (!window.__DSH_LAN__) ctx.effect(() => {
+          const rx = createRemoteReceiver(() => { const layout = ctx.get('layout'); if (layout) { try { layout.selectPanel(PANEL_ID); } catch { /* not registered */ } } });
+          return () => rx.dispose();
+        }, 'iptv: remote receiver');
         ctx.slots.inject('shell.overlay', () => ctx.slots.register({ name: 'shell.overlay', id: 'iptv-mini-player', order: 50 }, MiniPlayer));
         ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS }, Panel));
         ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({

@@ -1,0 +1,3 @@
+- insert:
+    - id: lan-host
+      name: '@local/lan-host'

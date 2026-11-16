@@ -1,7 +1,9 @@
 import { promises as fs } from 'node:fs';
 import { once } from 'node:events';
-import { Store, dataFile, registerRoute, registerTool, errorText, uid, clip } from './common.js';
+import { Store, dataFile, registerRoute, registerTool, errorText, uid, clip, lanRaw } from './common.js';
 import { parseProxy, maskProxy, proxyRequest } from './proxy.js';
+import { Hub, startRemoteServer, lanAddresses, newKey } from './remote.js';
+import { qrPath } from './qr.js';
 import { parsePlaylist, rewriteHls, channelId } from './m3u.js';
 
 export const inject = ['tools', 'webServer', 'connection'];
@@ -11,6 +13,8 @@ const PLAYLIST_TTL = 6 * 60 * 60 * 1000;
 const MAX_PLAYLISTS = 30;
 const MAX_FAVORITES = 2000;
 const PLAYLIST_BYTES = 8 * 1024 * 1024;
+const REMOTE_PORT = 8790;
+const REMOTE_COMMANDS = new Set(['toggle', 'play', 'pause', 'next', 'prev', 'tune', 'number', 'volume', 'volume_up', 'volume_down', 'mute', 'stop', 'show', 'guide']);
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) DSH-IPTV/1.0';
 
 const DEFAULT_PLAYLISTS = [
@@ -80,8 +84,9 @@ async function getText(url, { proxy, timeoutMs = 30000, maxBytes = PLAYLIST_BYTE
  */
 function registerGetRoutes(ctx, currentProxy) {
   const reject = (req, res) => {
-    const code = ctx.connection.requestRejection({ headers: req.headers });
-    const site = req.headers['sec-fetch-site'];
+    // The LAN host authenticates its own requests and marks them; everything else goes through the Harness fence.
+    const code = req.lanTrusted === true ? null : ctx.connection.requestRejection({ headers: req.headers });
+    const site = req.lanTrusted === true ? undefined : req.headers['sec-fetch-site'];
     if (code || site === 'cross-site') {
       res.writeHead(code || 403, { 'content-type': 'text/plain' });
       res.end('forbidden');
@@ -95,7 +100,7 @@ function registerGetRoutes(ctx, currentProxy) {
     return false;
   };
 
-  ctx.effect(() => ctx.webServer.register({
+  const hlsRoute = {
     kind: 'exact',
     path: ROUTE + '/hls.js',
     async handler(req, res) {
@@ -109,9 +114,11 @@ function registerGetRoutes(ctx, currentProxy) {
         res.end(errorText(error));
       }
     },
-  }), 'iptv: hls.js');
+  };
+  ctx.effect(() => ctx.webServer.register(hlsRoute), 'iptv: hls.js');
+  lanRaw(ctx, 'iptv', hlsRoute.path, hlsRoute.handler, 'iptv: hls.js');
 
-  ctx.effect(() => ctx.webServer.register({
+  const streamRoute = {
     kind: 'exact',
     path: ROUTE + '/stream',
     async handler(req, res) {
@@ -176,13 +183,15 @@ function registerGetRoutes(ctx, currentProxy) {
         fail(502, 'could not reach the stream' + via + ': ' + why);
       }
     },
-  }), 'iptv: stream proxy');
+  };
+  ctx.effect(() => ctx.webServer.register(streamRoute), 'iptv: stream proxy');
+  lanRaw(ctx, 'iptv', streamRoute.path, streamRoute.handler, 'iptv: stream proxy');
 }
 
 export function apply(ctx) {
   const store = new Store(dataFile('iptv'), () => ({ version: 1, playlists: null, favorites: [], last: null }));
   // The proxy is per machine and may hold a password, so it lives in its own file that cloud-sync never uploads.
-  const local = new Store(dataFile('iptv-local'), () => ({ version: 1, proxy: { enabled: false, url: '', playlists: true } }));
+  const local = new Store(dataFile('iptv-local'), () => ({ version: 1, proxy: { enabled: false, url: '', playlists: true }, remote: { enabled: false, port: REMOTE_PORT, key: '' } }));
   // Cached copy of the proxy setting for the synchronous stream route; refreshed on every store load.
   let proxySetting = { enabled: false, url: '', playlists: true };
   const syncProxy = (data) => { proxySetting = { enabled: false, url: '', playlists: true, ...(data.proxy || {}) }; return proxySetting; };
@@ -274,8 +283,130 @@ export function apply(ctx) {
     return { ms: Date.now() - started, via: proxy.label };
   }
 
-  async function run(input) {
+  /* ---------- LAN remote ---------- */
+  const phones = new Hub(); // remote pages on phones listening for now-playing state
+  // TV pages (Harness tabs) long-poll for commands: a small ring of recent commands, each with a sequence number.
+  const cmdLog = [];
+  let cmdSeq = 0;
+  const waiters = new Set();
+  const tvSeen = new Map(); // tab id -> last poll time
+  const TV_TTL = 40000;
+  const tvCount = () => { const now = Date.now(); let n = 0; for (const [id, at] of tvSeen) { if (now - at < TV_TTL) n++; else tvSeen.delete(id); } return n; };
+  const tvs = { get size() { return tvCount(); } };
+  let lastTvCount = 0;
+  const tvTick = setInterval(() => { const n = tvCount(); if (n !== lastTvCount) { lastTvCount = n; phones.broadcast('state', publicState()); } }, 5000);
+  ctx.effect(() => () => { clearInterval(tvTick); for (const w of waiters) w(); waiters.clear(); }, 'iptv: remote poll');
+  function pushCommand(out) {
+    cmdSeq += 1;
+    cmdLog.push({ seq: cmdSeq, at: Date.now(), ...out });
+    while (cmdLog.length > 50) cmdLog.shift();
+    for (const w of [...waiters]) w();
+  }
+  async function pollCommands(input) {
+    if (!remoteCfg().enabled || !remote) return { ok: true, enabled: false, seq: cmdSeq, cmds: [] };
+    const tab = String(input.tab || '').slice(0, 64) || 'tab';
+    const first = !tvSeen.has(tab);
+    tvSeen.set(tab, Date.now());
+    if (first || tvCount() !== lastTvCount) { lastTvCount = tvCount(); phones.broadcast('state', publicState()); }
+    const since = Number(input.since);
+    if (!Number.isFinite(since) || since < 0) return { ok: true, enabled: true, seq: cmdSeq, cmds: [] };
+    const fresh = () => cmdLog.filter((c) => c.seq > since && Date.now() - c.at < 15000);
+    if (!fresh().length) {
+      await new Promise((resolve) => {
+        const done = () => { clearTimeout(timer); waiters.delete(done); resolve(); };
+        const timer = setTimeout(done, Math.max(1000, Math.min(Number(input.wait) || 25000, 28000)));
+        waiters.add(done);
+      });
+    }
+    tvSeen.set(tab, Date.now());
+    return { ok: true, enabled: true, seq: cmdSeq, cmds: fresh() };
+  }
+  let tvState = { channel: null, state: 'idle', paused: false, muted: false, volume: 1, index: -1, panel: false, at: null };
+  let remote = null; // { close, port }
+  let remoteError = null;
+  const remoteCfg = () => ({ enabled: false, port: REMOTE_PORT, key: '', ...((local.data && local.data.remote) || {}) });
+  const publicState = () => ({ ...tvState, favorite: tvState.channel ? isFavorite(tvState.channel.id) : false, tvs: tvs.size, channel: tvState.channel ? { id: tvState.channel.id, name: tvState.channel.name, logo: tvState.channel.logo, group: tvState.channel.group } : null });
+
+  function findChannel(id) {
+    for (const entry of cache.values()) { const c = entry.channels.find((x) => x.id === id); if (c) return c; }
+    const f = ((store.data && store.data.favorites) || []).find((x) => x.id === id);
+    return f || null;
+  }
+
+  async function remoteCommand(input) {
+    const cmd = String(input.cmd || '');
+    if (!REMOTE_COMMANDS.has(cmd)) return { ok: false, error: 'unknown command' };
+    if (!tvs.size) return { ok: false, error: 'TV is not open: open DeepSeek Harness on the computer', code: 'no_tv' };
+    const out = { cmd };
+    if (cmd === 'tune') {
+      const c = findChannel(String(input.id || ''));
+      if (!c) return { ok: false, error: 'unknown channel' };
+      out.channel = { id: c.id, name: c.name, url: c.url, logo: c.logo, group: c.group };
+    }
+    if (cmd === 'number') out.n = Math.max(1, Math.min(9999, Math.floor(Number(input.n) || 0)));
+    if (cmd === 'volume') out.value = Math.max(0, Math.min(1, Number(input.value) || 0));
+    pushCommand(out);
+    return { ok: true };
+  }
+
+  async function phoneChannels(q) {
+    const r = await channels(q);
+    // Phones get no stream URLs: tuning goes by channel id through the TV page.
+    return { ...r, items: r.items.map(({ url, ...rest }) => rest), playlists: undefined, proxy: undefined, last: undefined };
+  }
+
+  async function phoneFavorite(x) {
+    const r = await run({ action: 'favorite', id: String(x.id || ''), on: x.on === undefined ? undefined : !!x.on });
+    if (r.ok) phones.broadcast('state', publicState());
+    return r;
+  }
+  const isFavorite = (id) => !!id && ((store.data && store.data.favorites) || []).some((f) => f.id === id);
+
+  async function stopRemote() {
+    const r = remote; remote = null;
+    if (r) await r.close();
+  }
+  async function startRemote() {
+    await stopRemote();
+    const cfg = remoteCfg();
+    if (!cfg.enabled) return;
+    let lastError = null;
+    for (let i = 0; i < 10; i++) {
+      const port = (Number(cfg.port) || REMOTE_PORT) + i;
+      const srv = startRemoteServer({
+        port, key: () => remoteCfg().key, phones,
+        api: { state: publicState, command: remoteCommand, channels: phoneChannels, favorite: phoneFavorite },
+      });
+      try {
+        const bound = await srv.ready;
+        remote = { close: srv.close, port: bound };
+        remoteError = null;
+        return;
+      } catch (error) {
+        lastError = error;
+        if (!error || error.code !== 'EADDRINUSE') break;
+      }
+    }
+    remoteError = errorText(lastError);
+  }
+  const remoteView = () => {
+    const cfg = remoteCfg();
+    const addrs = lanAddresses();
+    const urls = remote ? addrs.map((a) => 'http://' + a.address + ':' + remote.port + '/?k=' + encodeURIComponent(cfg.key)) : [];
+    return {
+      enabled: !!cfg.enabled, running: !!remote, port: remote ? remote.port : cfg.port, error: remoteError,
+      addresses: addrs, urls, url: urls[0] || null, qr: urls[0] ? qrPath(urls[0]) : null,
+      phones: phones.size, tvs: tvs.size,
+    };
+  };
+  local.load().then(() => startRemote()).catch(() => {});
+  ctx.effect(() => () => { stopRemote(); }, 'iptv: remote server');
+
+
+  async function run(input, _agent, via) {
     const action = input.action || 'channels';
+    // The phone remote and the proxy settings belong to the computer; a LAN device only watches.
+    if (via && via.lan && (action.startsWith('remote') || action === 'settings' || action === 'test_proxy')) return { ok: false, error: 'not available over the LAN' };
     const data = await store.load();
     const localData = await local.load();
     syncProxy(localData);
@@ -347,6 +478,41 @@ export function apply(ctx) {
       await store.save();
       return { ok: true, id, favorite: on };
     }
+    if (action === 'remote_state') {
+      const st = input.state || {};
+      const c = st.channel && typeof st.channel === 'object' ? st.channel : null;
+      tvState = {
+        channel: c ? { id: String(c.id || ''), name: clip(String(c.name || ''), 120), logo: /^https?:/i.test(String(c.logo || '')) ? String(c.logo) : '', group: clip(String(c.group || ''), 80) } : null,
+        state: ['idle', 'loading', 'playing', 'error'].includes(st.state) ? st.state : 'idle',
+        error: clip(String(st.error || ''), 200), paused: !!st.paused, muted: !!st.muted,
+        volume: Math.max(0, Math.min(1, Number(st.volume) || 0)), index: Number.isInteger(st.index) ? st.index : -1,
+        panel: !!st.panel, pip: !!st.pip, at: new Date().toISOString(),
+      };
+      phones.broadcast('state', publicState());
+      return { ok: true };
+    }
+    if (action === 'remote') {
+      const op = String(input.op || 'status');
+      if (op === 'enable' || op === 'disable' || op === 'rotate_key') {
+        const cfg = remoteCfg();
+        if (op === 'enable') cfg.enabled = true;
+        if (op === 'disable') cfg.enabled = false;
+        if (op === 'rotate_key' || !cfg.key) cfg.key = newKey();
+        if (input.port !== undefined) {
+          const port = Math.floor(Number(input.port));
+          if (!(port >= 1024 && port <= 65535)) return { ok: false, error: 'port must be 1024-65535' };
+          cfg.port = port;
+        }
+        localData.remote = cfg;
+        await local.save();
+        if (op === 'rotate_key') phones.closeAll();
+        await startRemote();
+        if (cfg.enabled && !remote) return { ok: false, error: 'Could not start the remote server: ' + (remoteError || 'unknown error'), remote: remoteView() };
+      }
+      return { ok: true, remote: remoteView() };
+    }
+    if (action === 'remote_command') return remoteCommand(input);
+    if (action === 'remote_poll') return pollCommands(input);
     if (action === 'last') {
       const id = String(input.id || '');
       data.last = id ? { id, name: clip(String(input.name || ''), 120), url: String(input.url || ''), logo: String(input.logo || ''), group: String(input.group || ''), at: new Date().toISOString() } : null;
@@ -378,11 +544,11 @@ export function apply(ctx) {
   registerRoute(ctx, ROUTE, run, 'iptv');
   registerTool(ctx, {
     name: 'iptv',
-    description: 'Live TV (IPTV) panel in the sidebar; playback happens in the panel. Actions: channels (search enabled playlists; optional query words, group, playlist id or name, favorites=true, limit, offset, refresh), playlists (list M3U playlists), add_playlist (url, optional name; fetches it first), update_playlist (id, enabled or name), remove_playlist (id), refresh (id), favorite (id from channels, or url+name; optional on=true|false, toggles when omitted), settings (read the outbound proxy, or change it with proxyUrl, proxyEnabled, proxyPlaylists, optional test=true to check before saving), test_proxy (optional proxyUrl). The proxy (http://, https:// or socks5://, optional user:pass@) carries stream and playlist requests from the Host; the password is never returned. Channels carry name, group, stream url and favorite flag.',
+    description: 'Live TV (IPTV) panel in the sidebar; playback happens in the panel. Actions: channels (search enabled playlists; optional query words, group, playlist id or name, favorites=true, limit, offset, refresh), playlists (list M3U playlists), add_playlist (url, optional name; fetches it first), update_playlist (id, enabled or name), remove_playlist (id), refresh (id), favorite (id from channels, or url+name; optional on=true|false, toggles when omitted), settings (read the outbound proxy, or change it with proxyUrl, proxyEnabled, proxyPlaylists, optional test=true to check before saving), test_proxy (optional proxyUrl), remote (op status|enable|disable|rotate_key, optional port: the phone remote control web page on the LAN; returns its URL), remote_command (cmd toggle|next|prev|volume_up|volume_down|mute|stop|show|guide|tune with id|number with n|volume with value 0-1: control the TV page in the browser). The proxy (http://, https:// or socks5://, optional user:pass@) carries stream and playlist requests from the Host; the password is never returned. Channels carry name, group, stream url and favorite flag.',
     parameters: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['channels', 'playlists', 'add_playlist', 'update_playlist', 'remove_playlist', 'refresh', 'favorite', 'settings', 'test_proxy'], description: 'Operation to perform.' },
+        action: { type: 'string', enum: ['channels', 'playlists', 'add_playlist', 'update_playlist', 'remove_playlist', 'refresh', 'favorite', 'settings', 'test_proxy', 'remote', 'remote_command'], description: 'Operation to perform.' },
         query: { type: 'string', description: 'channels: space-separated words that must all appear in the channel name or group.' },
         group: { type: 'string', description: 'channels: exact group title.' },
         playlist: { type: 'string', description: 'channels: limit to one playlist, by id or exact name (includes disabled playlists).' },
@@ -399,6 +565,11 @@ export function apply(ctx) {
         proxyEnabled: { type: 'boolean', description: 'settings: route requests through the proxy.' },
         proxyPlaylists: { type: 'boolean', description: 'settings: also fetch M3U playlists through the proxy (default true); streams always use it when enabled.' },
         test: { type: 'boolean', description: 'settings: check the proxy before saving and refuse to save if it fails.' },
+        op: { type: 'string', enum: ['status', 'enable', 'disable', 'rotate_key'], description: 'remote: what to do with the LAN remote page.' },
+        port: { type: 'number', description: 'remote: preferred LAN port (default 8790; the next free port is used when taken).' },
+        cmd: { type: 'string', enum: [...REMOTE_COMMANDS], description: 'remote_command: command for the TV page.' },
+        n: { type: 'number', description: 'remote_command number: 1-based channel number in the current list.' },
+        value: { type: 'number', description: 'remote_command volume: 0-1.' },
       },
       required: ['action'],
       additionalProperties: false,

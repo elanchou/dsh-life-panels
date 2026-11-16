@@ -1,5 +1,5 @@
 import http from 'node:http';
-import { Store, dataFile, registerRoute, registerTool, clip, errorText } from './common.js';
+import { Store, dataFile, registerRoute, registerTool, clip, errorText, lanRaw } from './common.js';
 import { channelVideos, searchChannels, resolveChannel, parseAgo } from './yt.js';
 
 export const inject = ['tools', 'webServer', 'connection'];
@@ -40,6 +40,7 @@ function startPlayerServer() {
 }
 
 const ROUTE = '/plugin-api/youtube';
+const LAN_PLAYER = '/_yt';
 const FEED_TTL = 30 * 60 * 1000;
 const CONCURRENCY = 4;
 const MAX_CHANNELS = 200;
@@ -143,11 +144,13 @@ export function apply(ctx) {
   const NEW_DAYS = 14;
   const isNew = (v, data) => !data.watched[v.id] && v.publishedAt && Date.now() - Date.parse(v.publishedAt) < NEW_DAYS * 864e5;
 
-  async function run(input) {
+  async function run(input, _agent, via) {
     const data = await store.load();
     const action = input.action || 'latest';
 
     if (action === 'player') {
+      // Over the LAN the player page is served by the LAN host itself: 127.0.0.1 would be the viewing device.
+      if (via && via.lan) return { ok: true, base: LAN_PLAYER };
       try { return { ok: true, base: 'http://127.0.0.1:' + await player.ready }; } catch (error) { return { ok: false, error: 'Player page unavailable: ' + errorText(error) }; }
     }
     if (action === 'search') {
@@ -218,6 +221,13 @@ export function apply(ctx) {
   }
 
   registerRoute(ctx, ROUTE, run, 'youtube');
+  lanRaw(ctx, 'youtube', LAN_PLAYER + '/', (req, res) => {
+    res.writeHead(200, {
+      'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store',
+      'referrer-policy': 'strict-origin-when-cross-origin', 'x-content-type-options': 'nosniff',
+    });
+    res.end(req.method === 'HEAD' ? undefined : PLAYER_HTML);
+  }, 'youtube: player page');
   registerTool(ctx, {
     name: 'youtube',
     description: 'YouTube channel subscriptions in the sidebar YouTube panel (no Google account; the panel plays videos in an embedded player). Actions: search (query; finds channels); subscribe (channel: channel URL, @handle or channel id); unsubscribe (id); channels (subscriptions with newCount, unwatched uploads from the last 14 days); latest (recent uploads across subscriptions, newest first; optional channelId, unwatched, query, limit, refresh); watched (id or ids, watched=false to unmark); mark_all_watched (optional channelId). Publish times are estimated from YouTube\'s relative labels such as "3 days ago".',
