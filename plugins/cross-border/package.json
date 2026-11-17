@@ -1,6 +1,6 @@
 {
   "name": "@local/cross-border",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Cross-border e-commerce workbench: products with landed cost, listings per platform and market with live profit in the sale currency, a target-margin price calculator, and inbound shipments. The agent can research prices and write listings.",
   "private": true,
   "license": "MIT",

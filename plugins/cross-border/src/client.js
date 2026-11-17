@@ -2,7 +2,6 @@ window.__ModuleLoader__.load({
   id: '@local/cross-border',
   factory(require) {
     /* @kit */
-    /* @suite */
 
     const PANEL_ID = 'cross-border';
     const NS = 'cross-border';

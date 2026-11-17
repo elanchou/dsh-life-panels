@@ -151,11 +151,10 @@
         ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'cross-border: dictionaries');
         const t = ctx.locale.bind(NS);
         ctx.slots.inject('main', () => ctx.slots.register({ name: 'main', key: PANEL_ID, locale: NS }, Panel));
-        lifeGroupRegister(ctx, {
-          id: PANEL_ID, group: 'personal', order: 27, label: () => t('panel'), icon: CbIcon, render: (p) => h(Panel, { ...p, t }),
-        }, () => ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
-          name: 'sidebar.panellist', id: PANEL_ID, order: 34, label: () => t('panel'), locale: NS,
-        }, CbIcon)));
+        // Its own sidebar entry, independent of ElansStack's groups.
+        ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+          name: 'sidebar.panellist', id: PANEL_ID, order: 30, label: () => t('panel'), locale: NS,
+        }, CbIcon));
       },
     };
   },
