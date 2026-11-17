@@ -13,17 +13,17 @@ window.__ModuleLoader__.load({
       ftIntro: '关掉的功能不再出现在 ElansStack 的标签页和总览里。它们的数据和对话里的工具都不受影响，随时可以再打开。',
       ftCards: '今日总览里的卡片', ftFollows: '（跟随对应功能）', ftFailed: '保存失败：{error}',
       ftNote: '这里只控制 ElansStack 里显示什么。想彻底停用某个插件（比如停掉它的后台任务），请在插件管理里关闭它。',
-      ovToday: '今天', ovWeather: '天气', ovTodo: '今日待办', ovTrip: '行程', ovMarket: '行情', ovNews: '资讯', ovNotes: '速记',
+      ovToday: '今天', ovWeather: '天气', ovTodo: '今日待办', ovTrip: '行程', ovMarket: '全球市场', ovMarketsOpen: '{n} 个市场开市中', ovNews: '资讯', ovNotes: '速记',
       ovOpen: '打开', ovRefresh: '刷新', ovMissing: '这个功能没有启用', ovSave: '保存', ovSaving: '保存中…', ovDone: '完成',
       ovMorning: '早上好', ovAfternoon: '下午好', ovEvening: '晚上好', ovNight: '夜深了',
       ovCityHint: '设置你所在的城市，这里就会显示天气。', ovCityPh: '城市，例如 上海', ovChangeCity: '更换城市', ovWxFail: '天气暂时加载失败。',
       ovFeels: '体感 {n}°', ovHumidity: '湿度 {n}%', ovWind: '风 {n} km/h', ovTomorrow: '明天',
       ovNothingDue: '今天没有待办', ovNext: '下一个：{d} {title}', ovOverdue: '已过期', ovMoreN: '还有 {n} 项',
       ovFocusToday: '专注 {n}/{goal} 个番茄 · {m} 分钟', ovWords: '待复习 {due} · 新词 {fresh}',
-      ovTripOn: '旅行第 {n} 天', ovDays: '天后出发', ovWatchEmpty: '自选里还没有标的',
+      ovTripOn: '旅行第 {n} 天', ovDays: '天后出发', ovWatchEmpty: '还没有关注的标的',
       capPh: '记点什么：一句话、一个链接，或“明天下午3点 看牙”', capSwitch: '点一下或按 Tab 换个地方存', cap_note: '存为笔记', cap_reminder: '存为提醒', cap_reading: '存到稍后读', capDone_note: '已存为笔记', capDone_reminder: '已加提醒：{title} {when}', capDone_reading: '已加到稍后读', capDup: '（之前就存过）',
       ovSessions: 'DSH 会话', ovSesNeed: '{n} 个等你回复', ovSesWait: '等你回复', ovSesRun: '运行中', ovSesDone: '已完成', ovSesIdle: '没有运行中或等你回复的会话', ovUntitled: '未命名会话',
-      ovWork: '工作', ovNoReqs: '没有进行中的需求', ovLoops: '{n} 个研发闭环在运行', ovReach: '数据连接', ovSync: '云同步', ovSyncOff: '未连接', ovSyncAt: '{t}同步', ovSyncNever: '还没同步过', ovApi: 'Agent 接口', ovApiOff: '已关闭', ovApiPublic: '公网可用', ovApiLocal: '仅本机', ovTokens: '{n} 个令牌',
+      ovReach: '数据连接', ovSync: '云同步', ovSyncOff: '未连接', ovSyncAt: '{t}同步', ovSyncNever: '还没同步过', ovApi: 'Agent 接口', ovApiOff: '已关闭', ovApiPublic: '公网可用', ovApiLocal: '仅本机', ovTokens: '{n} 个令牌',
       ovAllOff: '总览里的卡片都关掉了，可以在「功能」标签里重新打开。', ovNewVideos: '{n} 个未看新视频', ovUnread: '{n} 篇待读', ovNotePh: '记一条…（回车保存）',
       empty: '没有启用任何面板。',
     };
@@ -33,7 +33,7 @@ window.__ModuleLoader__.load({
       ftIntro: 'A feature you turn off no longer appears in the ElansStack tabs or the overview. Its data and its chat tool are untouched, and you can turn it back on any time.',
       ftCards: 'Cards on the Today overview', ftFollows: '(follows its feature)', ftFailed: 'Could not save: {error}',
       ftNote: 'This only controls what ElansStack shows. To stop a plugin completely, including its background work, turn it off in the plugin manager.',
-      ovToday: 'Today', ovWeather: 'Weather', ovTodo: 'Due today', ovTrip: 'Trip', ovMarket: 'Market', ovNews: 'Headlines', ovNotes: 'Quick note',
+      ovToday: 'Today', ovWeather: 'Weather', ovTodo: 'Due today', ovTrip: 'Trip', ovMarket: 'Global markets', ovMarketsOpen: '{n} markets open', ovNews: 'Headlines', ovNotes: 'Quick note',
       ovOpen: 'Open', ovRefresh: 'Refresh', ovMissing: 'This feature is not enabled', ovSave: 'Save', ovSaving: 'Saving…', ovDone: 'Done',
       ovMorning: 'Good morning', ovAfternoon: 'Good afternoon', ovEvening: 'Good evening', ovNight: 'Up late',
       ovCityHint: 'Set your city to see the weather here.', ovCityPh: 'City, e.g. Shanghai', ovChangeCity: 'Change city', ovWxFail: 'Weather could not be loaded right now.',
@@ -43,7 +43,7 @@ window.__ModuleLoader__.load({
       ovTripOn: 'Trip day {n}', ovDays: 'days to go', ovWatchEmpty: 'The watchlist is empty',
       capPh: 'Capture anything: a thought, a link, or “tomorrow 3pm dentist”', capSwitch: 'Click or press Tab to save it elsewhere', cap_note: 'as a note', cap_reminder: 'as a reminder', cap_reading: 'to read later', capDone_note: 'Saved as a note', capDone_reminder: 'Reminder added: {title} {when}', capDone_reading: 'Added to the reading list', capDup: '(already saved before)',
       ovSessions: 'DSH sessions', ovSesNeed: '{n} need you', ovSesWait: 'needs you', ovSesRun: 'running', ovSesDone: 'finished', ovSesIdle: 'Nothing running or waiting for you', ovUntitled: 'Untitled session',
-      ovWork: 'Work', ovNoReqs: 'No open requirements', ovLoops: '{n} R&D loop runs going', ovReach: 'Data access', ovSync: 'Cloud sync', ovSyncOff: 'not connected', ovSyncAt: 'synced {t}', ovSyncNever: 'never synced', ovApi: 'Agent API', ovApiOff: 'off', ovApiPublic: 'public URL on', ovApiLocal: 'local only', ovTokens: '{n} tokens',
+      ovReach: 'Data access', ovSync: 'Cloud sync', ovSyncOff: 'not connected', ovSyncAt: 'synced {t}', ovSyncNever: 'never synced', ovApi: 'Agent API', ovApiOff: 'off', ovApiPublic: 'public URL on', ovApiLocal: 'local only', ovTokens: '{n} tokens',
       ovAllOff: 'All overview cards are off. Turn them back on in the Features tab.', ovNewVideos: '{n} new videos', ovUnread: '{n} to read', ovNotePh: 'Jot something… (Enter to save)',
       empty: 'No panels are enabled.',
     };
@@ -53,7 +53,6 @@ window.__ModuleLoader__.load({
     Object.assign(ICONS, {
       yt: ['M3 8.5a3.5 3.5 0 0 1 3.5-3.5h11A3.5 3.5 0 0 1 21 8.5v7a3.5 3.5 0 0 1-3.5 3.5h-11A3.5 3.5 0 0 1 3 15.5z', 'M10 9.2v5.6l4.8-2.8z'],
       chart: ['M4 19V5', 'M4 19h16', 'M7 15l3.5-4 3 2.5L19 7'],
-      bug: ['M9 9a3 3 0 0 1 6 0v6a3 3 0 0 1-6 0z', 'M4 13h5', 'M15 13h5', 'M5 7l3 2', 'M19 7l-3 2', 'M5 19l3-2', 'M19 19l-3-2'],
       globe: ['M3 12a9 9 0 1 0 18 0a9 9 0 1 0-18 0', 'M3 12h18', 'M12 3c2.5 3 2.5 15 0 18', 'M12 3c-2.5 3-2.5 15 0 18'],
       home: ['M4 11l8-7 8 7', 'M6 10v9a1 1 0 0 0 1 1h3.5v-5h3V20H17a1 1 0 0 0 1-1v-9'],
     });
@@ -180,7 +179,7 @@ window.__ModuleLoader__.load({
     }
 
     const HUB_CSS = [
-      '.lh-hub{display:flex;flex-direction:column;height:100%;min-height:0;' + GLASS_ROOT + '}',
+      '.lh-hub{display:flex;flex-direction:column;height:100%;min-height:0;background:var(--dsw-alias-bg-base,#fff)}',
       '.lh-bar{flex:none;display:flex;gap:4px;padding:8px 16px;overflow-x:auto;border-bottom:1px solid ' + B1 + ';scrollbar-width:none}',
       '.lh-bar::-webkit-scrollbar{display:none}',
       '.lh-tab{flex:none;display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;border:0;border-radius:9px;background:transparent;color:' + FG2 + ';font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}',

@@ -1,6 +1,6 @@
 {
   "name": "@local/elans-stack",
-  "version": "1.9.0",
+  "version": "1.10.1",
   "description": "ElansStack: Elan's personal workspace in one sidebar entry. A Today overview (weather, due reminders, trip, market, headlines, quick note) plus tabs for Personal (calendar, trips, notes, vocabulary, focus), Feeds (news, market, podcasts, YouTube, reading list, TV) and Settings (cloud sync, LAN). Member panels keep working on their own when this plugin is off.",
   "private": true,
   "license": "MIT",

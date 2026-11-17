@@ -9,8 +9,6 @@
     const ovNotes = makeCall('/plugin-api/notes');
     const ovTrips = makeCall('/plugin-api/travel-planner');
     const ovSelf = makeCall('/plugin-api/elans-stack');
-    const ovIcafe = makeCall('/plugin-api/icafe-workflow');
-    const ovDevloop = makeCall('/plugin-api/ios-devloop');
     const ovAgent = makeCall('/plugin-api/agent-api');
     const ovSync = makeCall('/plugin-api/cloud-sync');
 
@@ -20,7 +18,7 @@
     }
     const WX = [[0, '☀️'], [2, '⛅'], [3, '☁️'], [48, '🌫️'], [57, '🌦️'], [67, '🌧️'], [77, '🌨️'], [82, '🌧️'], [86, '🌨️'], [99, '⛈️']];
     const wxIcon = (code) => { for (const [max, icon] of WX) if (code <= max) return icon; return '🌡️'; };
-    const marketColors = () => { try { return localStorage.getItem('market.colors') === 'us' ? 'us' : 'cn'; } catch { return 'cn'; } };
+    const marketColors = () => { try { return localStorage.getItem('market.updown') === 'down' ? 'down' : 'up'; } catch { return 'up'; } };
     const signed = (n) => (n > 0 ? '+' : '') + n.toFixed(2);
 
     function OvCard(props) {
@@ -76,6 +74,7 @@
       const complete = async (id) => { setBusyId(id); try { await ovCal({ action: 'complete', id }); await reload(); } catch { /* the next refresh shows the truth */ } finally { setBusyId(null); } };
       const f = focus && focus.ok ? focus.data : null;
       const v = vocab && vocab.ok ? vocab.data : null;
+      if (cal && !cal.ok && cal.missing && !f && !v) return null;
       return h(OvCard, { icon: 'calendar', title: t('ovTodo'), onOpen: () => go('calendar-reminders'), openLabel: t('ovOpen') },
         !cal ? h('div', { className: 'lp-skel', style: { height: 70, borderRadius: 12 } })
           : !cal.ok ? h('div', { className: 'lp-muted ov-p' }, cal.missing ? t('ovMissing') : cal.error)
@@ -109,26 +108,31 @@
 
     function MarketCard(props) {
       const { t, res, go } = props;
+      if (res && !res.ok && res.missing) return null;
       const d = res && res.ok ? res.data : null;
       const colors = marketColors();
       const cls = (n) => (n > 0 ? 'is-up' : n < 0 ? 'is-down' : '');
-      const idx = d ? d.indices.filter((i) => i.quote).slice(0, 3) : [];
+      const idx = d ? (d.headline || d.indices || []).filter((i) => i.quote).slice(0, 3) : [];
+      const nm = (i) => (t('dateLocale') === 'zh-CN' ? i.name : i.nameEn || i.name);
+      const open = d && d.exchanges ? d.exchanges.filter((e) => e.state === 'open').length : 0;
       const movers = d ? d.items.filter((i) => i.quote && i.quote.pct !== null).sort((a, b) => Math.abs(b.quote.pct) - Math.abs(a.quote.pct)).slice(0, 4) : [];
       return h(OvCard, { icon: 'chart', title: t('ovMarket'), onOpen: () => go('market'), openLabel: t('ovOpen') },
         !res ? h('div', { className: 'lp-skel', style: { height: 88, borderRadius: 12 } })
           : !res.ok ? h('div', { className: 'lp-muted ov-p' }, res.missing ? t('ovMissing') : res.error)
             : h('div', { className: 'ov-mk is-' + colors },
-              h('div', { className: 'ov-mk-idx' }, idx.map((i) => h('div', { key: i.key, className: 'ov-mk-i ' + cls(i.quote.pct) }, h('span', { className: 'lp-muted' }, i.name), h('b', null, i.quote.price.toFixed(2)), h('span', null, signed(i.quote.pct) + '%')))),
-              movers.length ? h('ul', { className: 'ov-list' }, movers.map((i) => h('li', { key: i.key, className: 'ov-mk-row ' + cls(i.quote.pct) }, h('span', null, i.name), h('span', null, i.quote.price.toFixed(2)), h('b', null, signed(i.quote.pct) + '%'))))
-                : h('div', { className: 'lp-muted ov-p' }, t('ovWatchEmpty'))));
+              h('div', { className: 'ov-mk-idx' }, idx.map((i) => h('div', { key: i.key, className: 'ov-mk-i ' + cls(i.quote.pct) }, h('span', { className: 'lp-muted' }, nm(i)), h('b', null, i.quote.price.toLocaleString('en-US', { maximumFractionDigits: 2 })), h('span', null, signed(i.quote.pct) + '%')))),
+              movers.length ? h('ul', { className: 'ov-list' }, movers.map((i) => h('li', { key: i.key, className: 'ov-mk-row ' + cls(i.quote.pct) }, h('span', null, nm(i)), h('span', null, i.quote.price.toLocaleString('en-US', { maximumFractionDigits: i.quote.price < 10 ? 4 : 2 })), h('b', null, signed(i.quote.pct) + '%'))))
+                : h('div', { className: 'lp-muted ov-p' }, t('ovWatchEmpty')),
+              d && d.exchanges ? h('div', { className: 'lp-muted ov-p' }, t('ovMarketsOpen', { n: open })) : null));
     }
 
     function FeedsCard(props) {
       const { t, news, tube, read, go } = props;
+      if (news && !news.ok && news.missing) return null;
       const items = news && news.ok ? (news.data.items || []).slice(0, 5) : [];
       const newVideos = tube && tube.ok ? (tube.data.channels || []).reduce((a, c) => a + (c.newCount || 0), 0) : null;
       const unread = read && read.ok ? (read.data.counts || {}).unread : null;
-      return h(OvCard, { icon: 'rss', title: t('ovNews'), onOpen: () => go('news-feeds'), openLabel: t('ovOpen'), wide: true },
+      return h(OvCard, { icon: 'rss', title: t('ovNews'), onOpen: () => go('news-feeds'), openLabel: t('ovOpen') },
         !news ? h('div', { className: 'lp-skel', style: { height: 120, borderRadius: 12 } })
           : !news.ok ? h('div', { className: 'lp-muted ov-p' }, news.missing ? t('ovMissing') : news.error)
             : h('ul', { className: 'ov-news' }, items.map((n) => h('li', { key: n.id },
@@ -142,6 +146,7 @@
     function NotesCard(props) {
       const { t, res, go, reload } = props;
       const [draft, setDraft] = useState('');
+      const hidden = !!(res && !res.ok && res.missing);
       const [busy, setBusy] = useState(false);
       const add = async (e) => {
         e.preventDefault();
@@ -151,6 +156,7 @@
         try { await ovNotes({ action: 'add', body }); setDraft(''); await reload(); } catch { /* the notes tab reports errors in detail */ } finally { setBusy(false); }
       };
       const items = res && res.ok ? (res.data.items || []).slice(0, 4) : [];
+      if (hidden) return null;
       return h(OvCard, { icon: 'note', title: t('ovNotes'), onOpen: () => go('notes'), openLabel: t('ovOpen') },
         res && !res.ok ? h('div', { className: 'lp-muted ov-p' }, res.missing ? t('ovMissing') : res.error) : h(React.Fragment, null,
           h('form', { className: 'ov-city', onSubmit: add },
@@ -162,28 +168,6 @@
               n.tasks && n.tasks.total ? h('span', { className: 'lp-muted' }, n.tasks.done + '/' + n.tasks.total) : null,
               h('span', { className: 'lp-muted' }, ago(n.updatedAt, t)))))
               : null));
-    }
-
-    /**
-     * Work: the iCafe requirements you registered (child-card progress, no network call) and running iOS R&D loop
-     * jobs. Bugs are not fetched here because that queries several iCafe spaces; the iCafe tab has them.
-     */
-    function WorkCard(props) {
-      const { t, icafe, loops, go } = props;
-      if (!icafe || (!icafe.ok && icafe.missing)) return null;
-      const reqs = icafe.ok ? (icafe.data.requirements || []).filter((r) => !r.cardFinished) : [];
-      const runs = loops && loops.ok ? (loops.data.runs || []).filter((r) => r.status === 'running') : [];
-      return h(OvCard, { icon: 'bug', title: t('ovWork'), onOpen: () => go('icafe-workflow'), openLabel: t('ovOpen') },
-        !icafe.ok ? h('div', { className: 'lp-muted ov-p' }, icafe.error)
-          : !reqs.length ? h('div', { className: 'lp-muted ov-p' }, t('ovNoReqs'))
-            : h('ul', { className: 'ov-list' }, reqs.slice(0, 5).map((r) => {
-              const pct = r.childTotal ? Math.round((r.childDone / r.childTotal) * 100) : 0;
-              return h('li', { key: r.id, className: 'ov-req' },
-                h('a', { href: r.url, target: '_blank', rel: 'noopener noreferrer', title: r.title }, r.title),
-                h('span', { className: 'ov-bar', title: r.childDone + '/' + r.childTotal }, h('i', { style: { width: pct + '%' } })),
-                h('span', { className: 'lp-muted ov-req-n' }, r.childTotal ? r.childDone + '/' + r.childTotal : (r.cardStatus || '')));
-            })),
-        runs.length ? h('div', { className: 'ov-chips' }, h('span', { className: 'ov-chip is-hot' }, h(Icon, { name: 'refresh', size: 13, className: 'lp-spin' }), t('ovLoops', { n: runs.length }))) : null);
     }
 
     /** Where the data can be reached from: cloud sync and the Agent API, so a broken link is noticed. */
@@ -295,12 +279,10 @@
           ask('calendar-reminders', () => ovCal({ action: 'list', scope: 'open' })), ask('focus', () => ovFocus({ action: 'status' })),
           ask('vocabulary', () => ovVocab({ action: 'status' })), ask('travel-planner', () => ovTrips({ action: 'list_trips' })), ask('market', () => ovMarket({ action: 'quotes' })),
           ask('news-feeds', () => ovNews({ action: 'headlines', limit: 5 })), ask('youtube', () => ovTube({ action: 'channels' })), ask('reading-list', () => ovRead({ action: 'list', status: 'unread' })), ask('notes', () => ovNotes({ action: 'list', limit: 4 })),
-          cardOn('work') ? settle(ovIcafe({ action: 'req_list' })) : Promise.resolve({ ok: false, missing: true }),
-          cardOn('work') ? settle(ovDevloop({ action: 'list' })) : Promise.resolve({ ok: false, missing: true }),
           cardOn('reach') ? settle(ovSync({ action: 'status' })) : Promise.resolve({ ok: false, missing: true }),
           cardOn('reach') ? settle(ovAgent({ action: 'status' })) : Promise.resolve({ ok: false, missing: true }),
         ]);
-        if (alive.current) setS({ wx: r[0], cal: r[1], focus: r[2], vocab: r[3], trips: r[4], market: r[5], news: r[6], tube: r[7], read: r[8], notes: r[9], icafe: r[10], loops: r[11], sync: r[12], agent: r[13] });
+        if (alive.current) setS({ wx: r[0], cal: r[1], focus: r[2], vocab: r[3], trips: r[4], market: r[5], news: r[6], tube: r[7], read: r[8], notes: r[9], sync: r[10], agent: r[11] });
       }, [sig]);
       useEffect(() => {
         alive.current = true; load();
@@ -321,7 +303,6 @@
               ? h(SessionsCard, { t, useSessions: props.useSessions, useSessionStatus: props.useSessionStatus, openSession: props.openSession }) : null,
             cardOn('weather') ? h(WeatherCard, { t, res: s.wx, onSaved: () => load(true) }) : null,
             cardOn('todo') ? h(TodayCard, { t, cal: s.cal, focus: isOff('focus') ? null : s.focus, vocab: isOff('vocabulary') ? null : s.vocab, go, reload }) : null,
-            cardOn('work') ? h(WorkCard, { t, icafe: s.icafe, loops: s.loops, go }) : null,
             cardOn('trip') ? h(TripCard, { t, res: s.trips, go }) : null,
             cardOn('market') ? h(MarketCard, { t, res: s.market, go }) : null,
             cardOn('notes') ? h(NotesCard, { t, res: s.notes, go, reload }) : null,
@@ -343,9 +324,8 @@
       '.ov-cap-tgt.is-reading{color:var(' + OK + ');border-color:' + tint(OK, 40) + '}',
       '.ov-cap-go{height:34px}',
       '.ov-cap-msg{flex-basis:100%;padding:2px 30px 2px;font-size:12.5px}',
-      '.ov-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(310px,1fr));gap:14px;align-items:start}',
-      '.ov-card{padding:14px 16px;display:flex;flex-direction:column;gap:10px;min-width:0}',
-      '.ov-card.is-wide{grid-column:1/-1}',
+      '.ov-grid{column-width:340px;column-gap:14px}',
+      '.ov-card{padding:14px 16px;display:flex;flex-direction:column;gap:10px;min-width:0;break-inside:avoid;-webkit-column-break-inside:avoid;margin:0 0 14px;box-sizing:border-box;width:100%}',
       '.ov-card-head{display:flex;align-items:center;justify-content:space-between;gap:8px}',
       '.ov-open{height:26px;padding:0 8px;font-size:12px}',
       '.ov-p{margin:0;font-size:12.5px;line-height:19px}',
@@ -379,8 +359,8 @@
       '.ov-trip-main b{font-size:15px}',
       '.ov-trip-count{display:flex;align-items:baseline;gap:4px;font-size:13px}',
       '.ov-trip-count b{font-size:28px;font-variant-numeric:tabular-nums}',
-      '.ov-mk{--mk-up:var(' + ERR + ');--mk-down:var(' + OK + ');display:flex;flex-direction:column;gap:10px}',
-      '.ov-mk.is-us{--mk-up:var(' + OK + ');--mk-down:var(' + ERR + ')}',
+      '.ov-mk{--mk-up:var(' + OK + ');--mk-down:var(' + ERR + ');display:flex;flex-direction:column;gap:10px}',
+      '.ov-mk.is-down{--mk-up:var(' + ERR + ');--mk-down:var(' + OK + ')}',
       '.ov-mk-idx{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}',
       '.ov-mk-i{display:flex;flex-direction:column;gap:1px;padding:8px 10px;border-radius:12px;background:var(--lp-glass-soft);font-size:12px;font-variant-numeric:tabular-nums;min-width:0}',
       '.ov-mk-i b{font-size:15px}',
@@ -391,23 +371,16 @@
       '.ov-mk-row span:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:' + FG + '}',
       '.ov-mk-row b{text-align:right}',
       '.ov-news{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}',
-      '.ov-news li{display:flex;align-items:baseline;justify-content:space-between;gap:14px;padding:7px 0;border-top:1px solid var(--lp-glass-edge)}',
+      '.ov-news li{display:flex;flex-direction:column;gap:2px;padding:7px 0;border-top:1px solid var(--lp-glass-edge)}',
       '.ov-news li:first-child{border-top:0}',
-      '.ov-news a{flex:1;min-width:0;color:' + FG + ';text-decoration:none;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.ov-news a{min-width:0;color:' + FG + ';text-decoration:none;font-size:13.5px;line-height:19px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}',
       '.ov-news a:hover{text-decoration:underline}',
-      '.ov-news li span{flex:none;font-size:11.5px}',
+      '.ov-news li span{font-size:11.5px}',
       '.ov-notes li{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-top:1px solid var(--lp-glass-edge);font-size:13px}',
       '.ov-notes li:first-child{border-top:0}',
       '.ov-notes li span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.ov-notes li.is-pinned span:first-child::before{content:"📌 "}',
       '.ov-notes li span + span{flex:none;font-size:11.5px}',
-      '.ov-req{display:grid;grid-template-columns:minmax(0,1fr) 64px 44px;align-items:center;gap:10px;padding:7px 0;border-top:1px solid var(--lp-glass-edge)}',
-      '.ov-req:first-child{border-top:0}',
-      '.ov-req a{color:' + FG + ';text-decoration:none;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-      '.ov-req a:hover{text-decoration:underline}',
-      '.ov-bar{height:6px;border-radius:999px;background:var(--lp-glass-soft);overflow:hidden}',
-      '.ov-bar i{display:block;height:100%;background:var(' + OK + ')}',
-      '.ov-req-n{font-size:11.5px;text-align:right;font-variant-numeric:tabular-nums}',
       '.ov-reach{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:13px}',
       '.ov-reach .lp-muted{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
       '.ov-dot{flex:none;width:8px;height:8px;border-radius:50%;background:var(' + IDLE + ')}',

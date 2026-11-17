@@ -1,7 +1,7 @@
 {
   "name": "@local/market",
-  "version": "1.0.1",
-  "description": "A stock, ETF and index watchlist for China A-shares, Hong Kong and US markets: live delayed quotes, search by name or code, daily charts, and optional position tracking for profit and loss. No account or API key.",
+  "version": "2.0.3",
+  "description": "Global markets: a 3D globe of the world exchanges with live open/closed state, world indices, commodities, currencies, crypto, and a watchlist of US and Hong Kong stocks and coins with optional positions. Delayed public quotes, no account or API key.",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -22,6 +22,7 @@
     "merge.js",
     "common.js",
     "client.js",
+    "vendor/*",
     "cordis.patch.yml",
     "locale/*.json",
     "icon.svg"

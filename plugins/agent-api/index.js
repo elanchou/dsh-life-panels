@@ -48,9 +48,11 @@ async function today() {
       : next ? { status: 'upcoming', id: next.id, name: next.name, destination: next.destination, startDate: next.startDate } : null;
   }
   if (market) {
+    const row = (r) => ({ key: r.key, name: r.nameEn || r.name, price: r.quote && r.quote.price, pct: r.quote && r.quote.pct });
     out.market = {
-      indices: market.indices.filter((i) => i.quote).map((i) => ({ name: i.name, price: i.quote.price, pct: i.quote.pct })),
-      watchlist: market.items.map((i) => ({ key: i.key, name: i.name, price: i.quote && i.quote.price, pct: i.quote && i.quote.pct, profit: i.position && i.position.profit })),
+      headline: (market.headline || []).filter((r) => r.quote).map(row),
+      exchangesOpen: (market.exchanges || []).filter((e) => e.state === 'open').map((e) => e.city),
+      watchlist: market.items.map((i) => ({ ...row(i), profit: i.position && i.position.profit })),
     };
   }
   if (news) out.headlines = (news.items || []).map((n) => ({ title: n.title, source: n.source, link: n.link, publishedAt: n.publishedAt }));

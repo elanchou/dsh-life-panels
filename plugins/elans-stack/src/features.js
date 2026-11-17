@@ -40,7 +40,7 @@
     }
 
     /** Overview cards: [id, the panel it depends on, label key]. A card also hides when its panel is hidden. */
-    const OV_CARDS = [['sessions', null, 'ovSessions'], ['weather', null, 'ovWeather'], ['todo', 'calendar-reminders', 'ovTodo'], ['work', null, 'ovWork'], ['trip', 'travel-planner', 'ovTrip'],
+    const OV_CARDS = [['sessions', null, 'ovSessions'], ['weather', null, 'ovWeather'], ['todo', 'calendar-reminders', 'ovTodo'], ['trip', 'travel-planner', 'ovTrip'],
       ['market', 'market', 'ovMarket'], ['notes', 'notes', 'ovNotes'], ['feeds', 'news-feeds', 'ovNews'], ['reach', null, 'ovReach']];
     const cardOn = (id) => { const c = OV_CARDS.find((x) => x[0] === id); return !isOff('card:' + id) && !(c && c[1] && isOff(c[1])); };
 

@@ -1,6 +1,6 @@
 {
   "name": "@local/agent-api",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Let agents outside DSH (Muse, Claude, ChatGPT, scripts) read and change the life-panel data through an MCP endpoint or plain HTTP, with per-agent tokens (read-only or read-write), a call log, and an optional public https URL through a Cloudflare quick tunnel.",
   "private": true,
   "license": "MIT",
