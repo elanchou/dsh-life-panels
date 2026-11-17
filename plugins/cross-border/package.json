@@ -1,0 +1,43 @@
+{
+  "name": "@local/cross-border",
+  "version": "0.1.0",
+  "description": "Cross-border e-commerce workbench: products with landed cost, listings per platform and market with live profit in the sale currency, a target-margin price calculator, and inbound shipments. The agent can research prices and write listings.",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/elanchou/dsh-life-panels.git",
+    "directory": "plugins/cross-border"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "calc.js",
+    "rates.js",
+    "merge.js",
+    "common.js",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
+    }
+  }
+}
