@@ -1,0 +1,3 @@
+- insert:
+    - id: ecommerce
+      name: '@local/ecommerce'

@@ -1,14 +1,14 @@
 {
-  "name": "@local/cross-border",
-  "version": "0.1.1",
-  "description": "Cross-border e-commerce workbench: products with landed cost, listings per platform and market with live profit in the sale currency, a target-margin price calculator, and inbound shipments. The agent can research prices and write listings.",
+  "name": "@local/ecommerce",
+  "version": "1.0.0",
+  "description": "Cross-border e-commerce back office: products with real landed cost, per-market listing profit, orders with their own cost and exchange rate, supplier purchases that restock, profit and loss, and restock advice from the real sales rate.",
   "private": true,
   "license": "MIT",
   "type": "module",
   "repository": {
     "type": "git",
     "url": "git+ssh://git@github.com/elanchou/dsh-life-panels.git",
-    "directory": "plugins/cross-border"
+    "directory": "plugins/ecommerce"
   },
   "exports": {
     ".": "./index.js",
@@ -17,15 +17,8 @@
     "./icon": "./icon.svg"
   },
   "files": [
-    "index.js",
-    "calc.js",
-    "rates.js",
-    "merge.js",
-    "common.js",
-    "client.js",
-    "cordis.patch.yml",
-    "locale/*.json",
-    "icon.svg"
+    "index.js", "calc.js", "csv.js", "model.js", "orders.js", "ops-orders.js", "ops-products.js", "rates.js", "reports.js", "util.js",
+    "merge.js", "common.js", "client.js", "cordis.patch.yml", "locale/*.json", "icon.svg"
   ],
   "dsh": {
     "bundle": {

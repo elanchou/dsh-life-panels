@@ -23,7 +23,7 @@ export const READ_ACTIONS = {
   iptv: ['channels', 'playlists'],
   market: ['quotes', 'search', 'history'],
   notes: ['list', 'get'],
-  cross_border: ['summary', 'list', 'get', 'calc', 'price_for', 'rates', 'list_shipments'],
+  ecommerce: ['dashboard', 'todo', 'report', 'list', 'get', 'calc', 'price_for', 'rates', 'list_orders', 'export_orders', 'list_purchases', 'list_costs'],
   dashboard_today: ['*'],
 };
 

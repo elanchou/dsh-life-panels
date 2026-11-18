@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "E-commerce",
+    "description": "Cross-border e-commerce back office. Products carry a real landed cost (purchase, freight by weight, duty); listings per platform and market show profit after commission, payment fees, VAT, ads and returns. Orders keep the cost and exchange rate of the day they were placed, can be imported from a platform CSV, and move stock. Supplier purchases restock on delivery and re-average cost. Reports give profit and loss by platform, market and product, and the restock list is driven by the real sales rate. Daily ECB rates; no store API is connected."
+  }
+}
