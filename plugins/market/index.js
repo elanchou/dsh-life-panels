@@ -11,6 +11,7 @@ export const inject = ['tools', 'webServer', 'connection'];
 
 const ROUTE = '/plugin-api/market';
 const TTL = 8 * 1000;          // stocks, indices, commodities, FX
+const YAHOO_TTL = 60 * 1000;   // indices, commodities and FX when they come from Yahoo (one request per instrument)
 const CRYPTO_TTL = 40 * 1000;  // CoinLore asks for gentle polling
 const SEARCH_COINS_TTL = 10 * 60 * 1000;
 const MAX_WATCH = 100;
@@ -78,22 +79,23 @@ export function apply(ctx) {
   const remember = (map, at = Date.now()) => { for (const [k, q] of map) cache.set(k, { at, quote: q }); };
 
   /* ---- sources ---- */
-  let emDownUntil = 0; // Eastmoney is unreachable on some networks; after a failure go straight to Yahoo for a while
+  let emDownUntil = 0; // Eastmoney is unreachable on some networks: probe it briefly, then use Yahoo straight away for ten minutes
   async function eastmoney(keys) {
     const out = new Map();
     if (Date.now() >= emDownUntil) {
       try {
         for (let i = 0; i < keys.length; i += 40) {
-          const json = await getJson(emUrl(keys.slice(i, i + 40)), { retries: 1 });
+          const buf = await getFamily(emUrl(keys.slice(i, i + 40)), lastFamily.get('push2.eastmoney.com') || 0, 2500);
+          let json = null; try { json = JSON.parse(buf.toString('utf8')); } catch { json = null; }
           for (const [k, q] of parseEastmoney(json)) out.set(k, q);
         }
         if (out.size) return out;
       } catch { /* fall through to Yahoo */ }
-      emDownUntil = Date.now() + 2 * 60 * 1000;
+      emDownUntil = Date.now() + 10 * 60 * 1000;
     }
     const todo = keys.filter((k) => !out.has(k) && yahooSymbol(k));
     let next = 0; let failure = null;
-    await Promise.all(Array.from({ length: Math.min(6, todo.length) }, async () => {
+    await Promise.all(Array.from({ length: Math.min(12, todo.length) }, async () => {
       while (next < todo.length) {
         const k = todo[next++];
         try { const q = parseYahooQuote(k, await getJson(yahooUrl(k, '1d', '1d'), { retries: 1 })); if (q) out.set(k, q); } catch (e) { failure = e; }
@@ -135,7 +137,7 @@ export function apply(ctx) {
   /** Quotes for any mix of keys. A source that fails leaves its keys out and is reported in `errors`. */
   async function quotes(keys, { force = false } = {}) {
     const want = [...new Set(keys)];
-    const need = want.filter((k) => force || !fresh(k, k.startsWith('c:') ? CRYPTO_TTL : TTL));
+    const need = want.filter((k) => force || !fresh(k, k.startsWith('c:') ? CRYPTO_TTL : k.startsWith('x:') && Date.now() < emDownUntil ? YAHOO_TTL : TTL));
     const errors = {};
     const groups = { x: need.filter((k) => k.startsWith('x:')), c: need.filter((k) => k.startsWith('c:')), t: need.filter((k) => /^(us|hk)/.test(k)) };
     await Promise.all([
@@ -199,9 +201,11 @@ export function apply(ctx) {
     await clean(data);
     if (refresh) { coinPages.clear(); }
     const keys = [...INDEX_KEYS, ...MACRO_KEYS, ...data.watchlist.map((w) => w.key)];
+    const topPromise = coinPage(0).then((m) => [...m.values()].slice(0, 12), (e) => e);
     const { map, errors } = await quotes(keys, { force: !!refresh });
+    const topResult = await topPromise;
     let top = [];
-    try { top = [...(await coinPage(0)).values()].slice(0, 12); } catch (e) { errors.crypto = errors.crypto || errorText(e); }
+    if (Array.isArray(topResult)) top = topResult; else errors.crypto = errors.crypto || errorText(topResult);
     for (const q of top) cache.set(q.key, { at: Date.now(), quote: q });
     const row = (key) => { const c = catalogEntry(key); return { key, kind: c.kind, region: c.region, name: c.name, nameEn: c.nameEn, quote: map.get(key) || null }; };
     const items = data.watchlist.map((w) => {
@@ -249,7 +253,7 @@ export function apply(ctx) {
     if (!q) return { ok: false, error: 'Unknown symbol: ' + key };
     let candles = [];
     if (key.startsWith('x:')) {
-      try { candles = parseEmKline(await getJson(emKlineUrl(key, days), { timeoutMs: 10000, retries: 2 })); } catch { candles = []; }
+      if (Date.now() >= emDownUntil) try { candles = parseEmKline(await getJson(emKlineUrl(key, days), { timeoutMs: 4000, retries: 0 })); } catch { candles = []; }
       if (!candles.length && yahooSymbol(key)) {
         try { candles = parseYahooKline(await getJson(yahooUrl(key, days <= 20 ? '1mo' : days <= 60 ? '3mo' : days <= 120 ? '6mo' : '1y', '1d'), { timeoutMs: 10000, retries: 1 })).slice(-days); } catch { candles = []; }
       }

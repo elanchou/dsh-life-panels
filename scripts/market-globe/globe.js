@@ -282,7 +282,7 @@ export function createGlobe(container, { onSelect }) {
         if (!forced && placed.some((p) => r[0] < p[2] && r[2] > p[0] && r[1] < p[3] && r[3] > p[1])) show = false;
         else placed.push(r);
       }
-      m.el.style.transform = `translate(${m.sx + 8}px, ${m.sy - m.h / 2}px)`;
+      m.el.style.transform = `translate(${Math.round(m.sx + 8)}px, ${Math.round(m.sy - m.h / 2)}px)`;
       m.el.style.opacity = show ? String(Math.min(1, (z - 0.12) * 4)) : '0';
       m.el.dataset.active = m.symbol === selected || m.symbol === hovered ? '1' : '';
     }
