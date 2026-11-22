@@ -63,7 +63,8 @@ for (const name of plugins) {
   client = client.replace(SUITE_MARKER, suite);
   // `/* @include file.js */` splices plugins/<name>/src/<file.js> in place, for panels too large for one file.
   for (const m of [...client.matchAll(/^ *\/\* @include ([\w.-]+) \*\/\n/gm)]) {
-    client = client.replace(m[0], await fs.readFile(path.join(dir, 'src', m[1]), 'utf8'));
+    const part = await fs.readFile(path.join(dir, 'src', m[1]), 'utf8');
+    client = client.replace(m[0], () => part);
   }
   await emit(path.join(dir, 'client.js'), client);
 

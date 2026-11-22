@@ -1,7 +1,7 @@
 {
   "name": "@local/market",
-  "version": "2.0.3",
-  "description": "Global markets: a 3D globe of the world exchanges with live open/closed state, world indices, commodities, currencies, crypto, and a watchlist of US and Hong Kong stocks and coins with optional positions. Delayed public quotes, no account or API key.",
+  "version": "3.0.0",
+  "description": "Global markets: a 3D globe of the world exchanges, world indices, commodities, currencies, crypto, and a watchlist of US and Hong Kong stocks and coins with optional positions. Delayed public quotes, no account or API key.",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -22,10 +22,11 @@
     "merge.js",
     "common.js",
     "client.js",
-    "vendor/*",
     "cordis.patch.yml",
     "locale/*.json",
-    "icon.svg"
+    "icon.svg",
+    "vendor/globe.js",
+    "vendor/three.LICENSE"
   ],
   "dsh": {
     "bundle": {

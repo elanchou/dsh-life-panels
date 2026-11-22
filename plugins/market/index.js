@@ -286,7 +286,7 @@ export function apply(ctx) {
 
   registerRoute(ctx, ROUTE, run, 'market');
 
-  /* ---- assets for the globe: the vendored three.js and the land dots, same-origin so the page needs no CDN ---- */
+  /* ---- the globe script (three.js and the land map bundled in), same-origin so the page needs no CDN ---- */
   const asset = (name, type) => ({
     kind: 'exact',
     path: ROUTE + '/' + name,
@@ -295,13 +295,13 @@ export function apply(ctx) {
       if (code || (req.lanTrusted !== true && req.headers['sec-fetch-site'] === 'cross-site')) { res.writeHead(code || 403, { 'content-type': 'text/plain' }); res.end('forbidden'); return; }
       if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { 'content-type': 'text/plain', allow: 'GET, HEAD' }); res.end('GET only'); return; }
       try {
-        const body = await fs.readFile(new URL('./vendor/' + (name === 'three.js' ? 'three.min.js' : name), import.meta.url));
+        const body = await fs.readFile(new URL('./vendor/' + name, import.meta.url));
         res.writeHead(200, { 'content-type': type, 'cache-control': 'private, max-age=86400', 'content-length': body.length });
         res.end(req.method === 'HEAD' ? undefined : body);
       } catch (error) { res.writeHead(500, { 'content-type': 'text/plain' }); res.end(errorText(error)); }
     },
   });
-  for (const a of [asset('three.js', 'text/javascript; charset=utf-8'), asset('land.json', 'application/json; charset=utf-8')]) {
+  for (const a of [asset('globe.js', 'text/javascript; charset=utf-8')]) {
     ctx.effect(() => ctx.webServer.register(a), 'market: ' + a.path);
     lanRaw(ctx, 'market', a.path, a.handler, 'market: ' + a.path);
   }
