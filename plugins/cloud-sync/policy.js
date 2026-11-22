@@ -21,7 +21,7 @@ export const READ_ACTIONS = {
   focus: ['status', 'history'],
   youtube: ['search', 'channels', 'latest'],
   iptv: ['channels', 'playlists'],
-  market: ['quotes', 'search', 'history'],
+  market: ['quotes', 'search', 'history', 'news'],
   notes: ['list', 'get'],
   ecommerce: ['dashboard', 'todo', 'report', 'list', 'get', 'calc', 'price_for', 'rates', 'list_orders', 'export_orders', 'list_purchases', 'list_costs'],
   dashboard_today: ['*'],

@@ -131,6 +131,38 @@ export function parseYahooKline(json) {
   return out;
 }
 
+/* ---------- News: public RSS feeds ---------- */
+
+export const NEWS_FEEDS = [
+  'https://www.cnbc.com/id/100003114/device/rss/rss.html',
+  'https://feeds.content.dowjones.io/public/rss/mw_topstories',
+];
+/** Yahoo Finance headline feed for one ticker such as AAPL, 0700.HK, BTC-USD or ^GSPC. */
+export const newsFeedUrl = (ticker) => 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=' + encodeURIComponent(ticker) + '&region=US&lang=en-US';
+/** The Yahoo ticker for a watchlist or catalog key, or null. */
+export function newsTicker(key) {
+  if (/^us[A-Z]/.test(key)) return key.slice(2);
+  if (/^hk\d{5}$/.test(key)) return String(Number(key.slice(2))).padStart(4, '0') + '.HK';
+  if (key.startsWith('c:')) return key.slice(2) + '-USD';
+  return yahooSymbol(key);
+}
+const decodeXml = (t) => t.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'")
+  .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d))).replace(/&amp;/g, '&').trim();
+const xmlTag = (x, name) => { const m = x.match(new RegExp('<' + name + '[^>]*>([\\s\\S]*?)</' + name + '>')); return m ? decodeXml(m[1]) : ''; };
+/** RSS items as { title, link, time, source, symbol }. Only http and https links are kept. */
+export function parseRss(xml, symbol = '') {
+  const items = String(xml || '').match(/<item>[\s\S]*?<\/item>/g) || [];
+  const out = [];
+  for (const it of items) {
+    let link = '';
+    try { const u = new URL(xmlTag(it, 'link')); if (u.protocol === 'https:' || u.protocol === 'http:') link = u.href; } catch { link = ''; }
+    const title = xmlTag(it, 'title');
+    if (!title || !link) continue;
+    out.push({ title, link, time: Date.parse(xmlTag(it, 'pubDate')) || 0, source: new URL(link).host.replace(/^www\./, ''), symbol });
+  }
+  return out;
+}
+
 /** Daily candles from push2his: "2026-11-16,open,close,high,low,volume" (fields2 f51..f56). */
 export function parseEmKline(json) {
   const rows = json && json.data && Array.isArray(json.data.klines) ? json.data.klines : [];

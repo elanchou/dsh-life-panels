@@ -95,6 +95,37 @@
           : h('div', { className: 'mkd-err' }, t('empty')));
     }
 
+    function ago(t, at) {
+      const m = Math.max(0, Math.round((Date.now() - at) / 60000));
+      return m < 1 ? t('ago_now') : m < 60 ? t('ago_min', { n: m }) : m < 1440 ? t('ago_hr', { n: Math.round(m / 60) }) : t('ago_day', { n: Math.round(m / 1440) });
+    }
+
+    function News(props) {
+      const { t, selected } = props;
+      const [mode, setMode] = useState('market');
+      const [items, setItems] = useState(null);
+      const [failed, setFailed] = useState(false);
+      useEffect(() => {
+        let live = true;
+        const run = () => call(mode === 'symbol' ? { action: 'news', scope: 'symbol', id: selected } : { action: 'news', scope: mode })
+          .then((r) => { if (live) { setItems(r.items); setFailed(false); } })
+          .catch(() => { if (live) { setFailed(true); } });
+        setItems(null); setFailed(false); run();
+        const id = setInterval(() => { if (!document.hidden) run(); }, 180000);
+        return () => { live = false; clearInterval(id); };
+      }, [mode, mode === 'symbol' ? selected : '']);
+      const modes = [['market', 'n_all'], ['symbol', 'n_sel'], ['watchlist', 'n_watch'], ['crypto', 'n_crypto']];
+      return h('section', { className: 'mkd-panel' },
+        h('div', { className: 'mkd-ph' }, h('b', null, t('news')),
+          h('div', { className: 'mkd-seg', role: 'group' }, modes.map(([m, k]) => h('button', { key: m, type: 'button', 'aria-pressed': mode === m, onClick: () => setMode(m) }, t(k))))),
+        items
+          ? h('ul', { className: 'mkd-news' }, items.length ? items.map((n) => h('li', { key: n.link },
+            h('a', { href: n.link, target: '_blank', rel: 'noopener noreferrer' }, n.title),
+            h('div', { className: 'mkd-meta' }, n.symbol ? h('span', { className: 'mkd-tag' }, n.symbol) : null, n.source, n.time ? ' · ' + ago(t, n.time) : '')))
+            : h('li', { className: 'mkd-mu' }, t('noNews')))
+          : h('div', { className: 'mkd-err' }, failed ? t('newsFail') : '…'));
+    }
+
     function GlobeHero(props) {
       const { t, exchanges, selectedEx, onPick } = props;
       const ref = useRef(null);

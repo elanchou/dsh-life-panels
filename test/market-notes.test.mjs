@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseQuotes, parseHint, hintKey, parseKline, klineKey, marketOf, parseEastmoney, parseEmKline, parseCoinLore, parseBybitKline, exchangeState, EXCHANGES, emUrl } from '../plugins/market/quote.js';
+import { parseRss, newsTicker, parseQuotes, parseHint, hintKey, parseKline, klineKey, marketOf, parseEastmoney, parseEmKline, parseCoinLore, parseBybitKline, exchangeState, EXCHANGES, emUrl } from '../plugins/market/quote.js';
 import { inlineTags, normalizeTags, taskLines, toggleTask, retag } from '../plugins/notes/index.js';
 
 const fields = (over) => { const f = new Array(50).fill(''); Object.assign(f, over); return f.join('~'); };
@@ -84,4 +84,20 @@ test('retag follows #tags in the text exactly and keeps hand-added ones', () => 
   assert.deepEqual(retag(['wor', 'manual'], 'hi #wor', 'hi #work'), ['work', 'manual']);
   assert.deepEqual(retag(['a'], '#a', 'nothing'), []);
   assert.deepEqual(retag([], '', 'new #x and #y'), ['x', 'y']);
+});
+
+test('parseRss keeps http(s) items, decodes entities and tags the symbol', () => {
+  const xml = '<rss><channel><item><title><![CDATA[Stocks fall &amp; rise]]></title><link>https://www.cnbc.com/a</link><pubDate>Fri, 20 Nov 2026 21:00:00 GMT</pubDate></item>'
+    + '<item><title>Bad link</title><link>javascript:alert(1)</link></item><item><title></title><link>https://x.test/</link></item></channel></rss>';
+  const items = parseRss(xml, 'AAPL');
+  assert.equal(items.length, 1);
+  assert.deepEqual([items[0].title, items[0].link, items[0].source, items[0].symbol], ['Stocks fall & rise', 'https://www.cnbc.com/a', 'cnbc.com', 'AAPL']);
+  assert.equal(items[0].time, Date.parse('2026-11-20T21:00:00Z'));
+});
+
+test('newsTicker maps watchlist keys to Yahoo tickers', () => {
+  assert.equal(newsTicker('usAAPL'), 'AAPL');
+  assert.equal(newsTicker('hk00700'), '0700.HK');
+  assert.equal(newsTicker('c:BTC'), 'BTC-USD');
+  assert.equal(newsTicker('x:100.SPX'), '^GSPC');
 });

@@ -76,6 +76,7 @@
             h('div', { className: 'mkd-cols' },
               h('div', { className: 'mkd-col' },
                 h(Detail, { key: sheet.key, t, item: sheet, watched: !!watched, onSaved: () => load(), onRemove: removeItem, onAdd: async (k) => { const f = await addSymbol(k); if (f) setError(f); }, onError: setError }),
+                h(News, { t, selected }),
                 h('section', { className: 'mkd-panel' },
                   h('div', { className: 'mkd-ph' }, h('div', { className: 'mkd-seg', role: 'tablist' }, tabs.map(([k, label]) => h('button', { key: k, type: 'button', role: 'tab', 'aria-pressed': tab === k, onClick: () => setTab(k) }, label)))),
                   h(QuoteRows, { t, rows: listRows, selected, select }))),

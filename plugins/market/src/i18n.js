@@ -13,6 +13,8 @@
       days: '近 {n} 日', histFail: '走势加载失败', histNone: '暂无走势数据',
       stale: '部分行情暂时拉取失败，显示的是上次的数据', loadFailed: '加载失败：{error}', saveFailed: '操作失败：{error}',
       delayed: '数据来自公开接口，可能有延迟，休市日（节假日）未纳入，仅供参考，不构成投资建议。',
+      news: '新闻', n_all: '全部市场', n_sel: '当前标的', n_watch: '自选', n_crypto: '加密货币', noNews: '暂无新闻。', newsFail: '新闻加载失败',
+      ago_now: '刚刚', ago_min: '{n} 分钟前', ago_hr: '{n} 小时前', ago_day: '{n} 天前',
       noWebgl: '这个浏览器不能显示 3D 地球，下面是交易所列表。', dateLocale: 'zh-CN',
     };
     const en = {
@@ -30,5 +32,7 @@
       days: 'Last {n} days', histFail: 'Could not load the chart', histNone: 'No chart data',
       stale: 'Some quotes could not be refreshed; showing the last data', loadFailed: 'Failed to load: {error}', saveFailed: 'Action failed: {error}',
       delayed: 'Data comes from public endpoints, may be delayed, ignores public holidays, and is not investment advice.',
+      news: 'News', n_all: 'Market', n_sel: 'Selected', n_watch: 'Watchlist', n_crypto: 'Crypto', noNews: 'No news.', newsFail: 'Could not load the news',
+      ago_now: 'just now', ago_min: '{n} min ago', ago_hr: '{n} h ago', ago_day: '{n} d ago',
       noWebgl: 'This browser cannot show the 3D globe; the exchange list is below.', dateLocale: 'en-US',
     };

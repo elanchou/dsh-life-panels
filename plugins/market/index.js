@@ -5,6 +5,7 @@ import {
   CATALOG, INDEX_KEYS, MACRO_KEYS, HEADLINE, EXCHANGES, catalogEntry, exchangeState,
   emUrl, parseEastmoney, emKlineUrl, parseEmKline, COINLORE_URL, parseCoinLore, cryptoSymbol, bybitKlineUrl, parseBybitKline,
   parseQuotes, parseHint, hintKey, parseKline, klineKey, yahooSymbol, yahooUrl, parseYahooQuote, parseYahooKline,
+  NEWS_FEEDS, newsFeedUrl, newsTicker, parseRss,
 } from './quote.js';
 
 export const inject = ['tools', 'webServer', 'connection'];
@@ -266,6 +267,40 @@ export function apply(ctx) {
     return { ok: true, key, name: q.nameEn || q.name, quote: q, candles };
   }
 
+  /* ---- news ---- */
+  const newsCache = new Map(); // url -> { at, items }
+  async function feed(url, symbol) {
+    const hit = newsCache.get(url);
+    if (hit && Date.now() - hit.at < 2 * 60 * 1000) return hit.items;
+    try {
+      const items = parseRss((await getBuffer(url, { timeoutMs: 6000 })).toString('utf8'), symbol);
+      newsCache.set(url, { at: Date.now(), items });
+      if (newsCache.size > 100) newsCache.delete(newsCache.keys().next().value);
+      return items;
+    } catch { return hit ? hit.items : []; }
+  }
+  /** Headlines for the market in general, the watchlist (first six symbols) or one symbol. */
+  async function news(data, input) {
+    const scope = String(input.scope || 'market');
+    let sources;
+    if (scope === 'symbol') {
+      const key = String(input.id || input.key || '').trim();
+      const ticker = key ? newsTicker(key) : null;
+      if (!ticker) return { ok: false, error: 'No news feed for: ' + key };
+      sources = [[newsFeedUrl(ticker), ticker]];
+    } else if (scope === 'watchlist') {
+      sources = data.watchlist.slice(0, 6).map((w) => [w.key, newsTicker(w.key)]).filter((x) => x[1]).map(([, t]) => [newsFeedUrl(t), t]);
+    } else if (scope === 'crypto') {
+      sources = ['BTC-USD', 'ETH-USD', 'SOL-USD'].map((t) => [newsFeedUrl(t), t]);
+    } else {
+      sources = NEWS_FEEDS.map((u) => [u, '']);
+    }
+    const lists = await Promise.all(sources.map(([u, sym]) => feed(u, sym)));
+    const seen = new Set();
+    const items = lists.flat().filter((n) => !seen.has(n.title) && seen.add(n.title)).sort((a, b) => b.time - a.time).slice(0, 40);
+    return { ok: true, scope, items };
+  }
+
   async function run(input) {
     const data = await store.load();
     const action = input.action || 'quotes';
@@ -299,6 +334,7 @@ export function apply(ctx) {
       await store.save();
       return { ok: true };
     }
+    if (action === 'news') return news(data, input);
     if (action === 'history') {
       const key = String(input.id || input.key || '').trim();
       if (!key) return { ok: false, error: 'id is required' };
@@ -331,11 +367,11 @@ export function apply(ctx) {
 
   registerTool(ctx, {
     name: 'market',
-    description: 'Global markets in the sidebar Market panel: world stock indices and exchanges (Americas, Europe, Asia-Pacific), gold, oil and other commodities, major currency pairs, crypto, plus a watchlist of US and Hong Kong stocks, ETFs and coins with optional positions. Delayed public quotes, no account. Actions: quotes (headline markets, all indices, commodities and FX, top coins, which exchanges are open, and the watchlist with positions; optional refresh), search (query: a ticker, company, coin or market name), add (symbol: a key like c:BTC, usAAPL, hk00700, x:100.N225, or a name or ticker to look up), remove (id), update (id plus note, shares, cost for profit and loss; empty clears), history (id, optional days up to 250: daily candles). Prices come from unofficial public endpoints and may lag; this is information, not investment advice.',
+    description: 'Global markets in the sidebar Market panel: world stock indices and exchanges (Americas, Europe, Asia-Pacific), gold, oil and other commodities, major currency pairs, crypto, plus a watchlist of US and Hong Kong stocks, ETFs and coins with optional positions. Delayed public quotes, no account. Actions: quotes (headline markets, all indices, commodities and FX, top coins, which exchanges are open, and the watchlist with positions; optional refresh), search (query: a ticker, company, coin or market name), add (symbol: a key like c:BTC, usAAPL, hk00700, x:100.N225, or a name or ticker to look up), remove (id), update (id plus note, shares, cost for profit and loss; empty clears), history (id, optional days up to 250: daily candles), news (scope market|watchlist|crypto|symbol, id for symbol: recent headlines from public RSS feeds). Prices come from unofficial public endpoints and may lag; this is information, not investment advice.',
     parameters: {
       type: 'object',
       properties: {
-        action: { type: 'string', enum: ['quotes', 'search', 'add', 'remove', 'update', 'history'], description: 'Operation to perform.' },
+        action: { type: 'string', enum: ['quotes', 'search', 'add', 'remove', 'update', 'history', 'news'], description: 'Operation to perform.' },
         query: { type: 'string', description: 'search: ticker, company, coin or market name.' },
         symbol: { type: 'string', description: 'add: a key (c:BTC, usAAPL, hk00700, x:100.N225) or a name or ticker to look up.' },
         id: { type: 'string', description: 'remove/update/history: key of the symbol.' },
@@ -343,6 +379,7 @@ export function apply(ctx) {
         shares: { type: ['number', 'string'], description: 'update: units held; empty string clears.' },
         cost: { type: ['number', 'string'], description: 'update: average cost per unit, in the quote currency; empty string clears.' },
         days: { type: 'number', description: 'history: number of daily candles, default 60.' },
+        scope: { type: 'string', enum: ['market', 'watchlist', 'crypto', 'symbol'], description: 'news: which headlines; symbol needs id.' },
         refresh: { type: 'boolean', description: 'quotes: bypass the short cache.' },
       },
       required: ['action'],
