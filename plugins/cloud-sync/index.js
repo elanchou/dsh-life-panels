@@ -5,13 +5,14 @@ import { dataFile, registerRoute, registerTool, errorText } from './common.js';
 import { GitHubRepo, ghError, syncBatch, writeJsonAtomic } from './engine.js';
 import { INBOX, OUTBOX, parseInbox, runRequests, appendOutbox, agentReadme } from './inbox.js';
 import { toolAllowed } from './policy.js';
+import { ASSISTANT, exportDoc, importDoc, sourceMtime } from './assistant.js';
 import { lanRegistry } from './common.js';
 
 export const inject = ['tools', 'webServer', 'connection'];
 
 const ROUTE = '/plugin-api/cloud-sync';
 const TOKEN_REF = 'DSH_CLOUD_SYNC_GITHUB_TOKEN';
-const FILES = ['calendar-reminders', 'news-feeds', 'reading-list', 'travel-planner', 'podcasts', 'vocabulary', 'focus', 'youtube', 'iptv', 'market', 'notes', 'ecommerce', 'elans-stack'];
+const FILES = ['calendar-reminders', 'news-feeds', 'reading-list', 'travel-planner', 'podcasts', 'vocabulary', 'focus', 'youtube', 'iptv', 'market', 'notes', 'ecommerce', 'elans-stack', ASSISTANT];
 const DIR = path.join(path.dirname(dataFile('x')), '.cloud-sync');
 const STATE_FILE = path.join(DIR, 'state.json');
 const baseFile = (name) => path.join(DIR, 'base', name + '.json');
@@ -122,6 +123,22 @@ export function apply(ctx) {
     return { files: listed, results: s.inboxPending, outbox };
   }
 
+  /* ---- personal-assistant: settings, tasks, credentials and the Telegram session live elsewhere; sync them as one document ---- */
+  const stagedFile = () => dataFile(ASSISTANT);
+  async function stageAssistant() {
+    let prev;
+    try { prev = JSON.parse(await fs.readFile(stagedFile(), 'utf8')); } catch { prev = undefined; }
+    const doc = await exportDoc(ctx.get('credentials'), prev);
+    if (!doc) return;
+    if (prev && JSON.stringify(prev) === JSON.stringify(doc)) return;
+    await writeJsonAtomic(stagedFile(), doc);
+  }
+  async function applyAssistant() {
+    let doc;
+    try { doc = JSON.parse(await fs.readFile(stagedFile(), 'utf8')); } catch { return; }
+    await importDoc(doc, ctx.get('credentials'));
+  }
+
   function syncAll(reason) {
     if (running) return running;
     running = (async () => {
@@ -130,6 +147,8 @@ export function apply(ctx) {
       const results = [];
       try {
         const gh = await repo();
+        // The assistant keeps its data outside plugin-data, so stage it as a document the engine can merge.
+        await stageAssistant();
         // All files that changed go up in one commit, so a sync adds at most one commit to the repository.
         const message = 'sync from ' + os.hostname() + ' (' + reason + ')';
         const files = FILES.map((name) => ({ name, localFile: dataFile(name), baseFile: baseFile(name), state: s.files[name] }));
@@ -152,6 +171,7 @@ export function apply(ctx) {
           s.files[r.name] = { sha: r.sha || null, status: r.status, conflicts: r.conflicts || 0, at: started, error: null };
           results.push(r);
         }
+        await applyAssistant();
         for (const name of FILES) seenMtime.set(name, await mtime(dataFile(name)));
         s.lastError = null;
       } catch (error) {
@@ -183,7 +203,7 @@ export function apply(ctx) {
         // Debounce: sync CHANGE_DELAY after the last local edit. Continuous edits (podcast progress every 15s) fall back to the interval.
         let editedSinceTick = false;
         for (const name of FILES) {
-          const m = await mtime(dataFile(name));
+          const m = name === ASSISTANT ? await sourceMtime() : await mtime(dataFile(name));
           if (seenMtime.has(name) && m !== seenMtime.get(name) && m !== tickMtime.get(name)) editedSinceTick = true;
           tickMtime.set(name, m);
         }
