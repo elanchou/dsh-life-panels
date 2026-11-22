@@ -4,7 +4,7 @@ import https from 'node:https';
 import {
   CATALOG, INDEX_KEYS, MACRO_KEYS, HEADLINE, EXCHANGES, catalogEntry, exchangeState,
   emUrl, parseEastmoney, emKlineUrl, parseEmKline, COINLORE_URL, parseCoinLore, cryptoSymbol, bybitKlineUrl, parseBybitKline,
-  parseQuotes, parseHint, hintKey, parseKline, klineKey,
+  parseQuotes, parseHint, hintKey, parseKline, klineKey, yahooSymbol, yahooUrl, parseYahooQuote, parseYahooKline,
 } from './quote.js';
 
 export const inject = ['tools', 'webServer', 'connection'];
@@ -78,12 +78,28 @@ export function apply(ctx) {
   const remember = (map, at = Date.now()) => { for (const [k, q] of map) cache.set(k, { at, quote: q }); };
 
   /* ---- sources ---- */
+  let emDownUntil = 0; // Eastmoney is unreachable on some networks; after a failure go straight to Yahoo for a while
   async function eastmoney(keys) {
     const out = new Map();
-    for (let i = 0; i < keys.length; i += 40) {
-      const json = await getJson(emUrl(keys.slice(i, i + 40)), { retries: 1 });
-      for (const [k, q] of parseEastmoney(json)) out.set(k, q);
+    if (Date.now() >= emDownUntil) {
+      try {
+        for (let i = 0; i < keys.length; i += 40) {
+          const json = await getJson(emUrl(keys.slice(i, i + 40)), { retries: 1 });
+          for (const [k, q] of parseEastmoney(json)) out.set(k, q);
+        }
+        if (out.size) return out;
+      } catch { /* fall through to Yahoo */ }
+      emDownUntil = Date.now() + 2 * 60 * 1000;
     }
+    const todo = keys.filter((k) => !out.has(k) && yahooSymbol(k));
+    let next = 0; let failure = null;
+    await Promise.all(Array.from({ length: Math.min(6, todo.length) }, async () => {
+      while (next < todo.length) {
+        const k = todo[next++];
+        try { const q = parseYahooQuote(k, await getJson(yahooUrl(k, '1d', '1d'), { retries: 1 })); if (q) out.set(k, q); } catch (e) { failure = e; }
+      }
+    }));
+    if (!out.size && failure) throw failure;
     return out;
   }
   async function tencent(keys) {
@@ -234,6 +250,9 @@ export function apply(ctx) {
     let candles = [];
     if (key.startsWith('x:')) {
       try { candles = parseEmKline(await getJson(emKlineUrl(key, days), { timeoutMs: 10000, retries: 2 })); } catch { candles = []; }
+      if (!candles.length && yahooSymbol(key)) {
+        try { candles = parseYahooKline(await getJson(yahooUrl(key, days <= 20 ? '1mo' : days <= 60 ? '3mo' : days <= 120 ? '6mo' : '1y', '1d'), { timeoutMs: 10000, retries: 1 })).slice(-days); } catch { candles = []; }
+      }
     } else if (key.startsWith('c:')) {
       try { candles = parseBybitKline(await getJson(bybitKlineUrl(cryptoSymbol(key), days), { timeoutMs: 10000, retries: 1 })); } catch { candles = []; }
     } else {

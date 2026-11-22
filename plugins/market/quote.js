@@ -86,6 +86,51 @@ export function parseEastmoney(json) {
   return out;
 }
 
+/* ---------- Yahoo Finance: fallback for the Eastmoney keys (indices, commodities, FX) ---------- */
+
+const YAHOO = {
+  'x:100.SPX': '^GSPC', 'x:100.DJIA': '^DJI', 'x:100.NDX': '^IXIC', 'x:100.TSX': '^GSPTSE', 'x:100.MXX': '^MXX', 'x:100.BVSP': '^BVSP',
+  'x:100.FTSE': '^FTSE', 'x:100.GDAXI': '^GDAXI', 'x:100.FCHI': '^FCHI', 'x:100.SX5E': '^STOXX50E', 'x:100.IBEX': '^IBEX', 'x:100.MIB': 'FTSEMIB.MI',
+  'x:100.SSMI': '^SSMI', 'x:100.AEX': '^AEX', 'x:100.N225': '^N225', 'x:100.HSI': '^HSI', 'x:100.KS11': '^KS11', 'x:100.TWII': '^TWII',
+  'x:100.SENSEX': '^BSESN', 'x:100.STI': '^STI', 'x:100.AS51': '^AXJO',
+  'x:101.GC00Y': 'GC=F', 'x:101.SI00Y': 'SI=F', 'x:102.CL00Y': 'CL=F', 'x:102.NG00Y': 'NG=F', 'x:101.HG00Y': 'HG=F', 'x:103.ZW00Y': 'ZW=F',
+  'x:100.UDI': 'DX-Y.NYB', 'x:119.EURUSD': 'EURUSD=X', 'x:119.GBPUSD': 'GBPUSD=X', 'x:119.USDJPY': 'JPY=X', 'x:119.AUDUSD': 'AUDUSD=X',
+  'x:119.USDCAD': 'CAD=X', 'x:119.USDCHF': 'CHF=X', 'x:119.NZDUSD': 'NZDUSD=X',
+};
+export const yahooSymbol = (key) => YAHOO[key] || null;
+export const yahooUrl = (key, range, interval) => 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(YAHOO[key]) + '?range=' + range + '&interval=' + interval;
+
+/** One Yahoo chart response (range 1d) as a quote of the same shape the Eastmoney parser returns. */
+export function parseYahooQuote(key, json) {
+  const cat = catalogEntry(key);
+  const res = json && json.chart && Array.isArray(json.chart.result) ? json.chart.result[0] : null;
+  const m = res && res.meta;
+  if (!cat || !m) return null;
+  const price = num(m.regularMarketPrice);
+  if (price === null) return null;
+  const prev = num(m.chartPreviousClose) ?? num(m.previousClose);
+  const change = prev ? round(price - prev, 4) : null;
+  return {
+    key, kind: cat.kind, region: cat.region, name: cat.name, nameEn: cat.nameEn, code: key.split('.')[1], price, prev, change,
+    pct: prev ? round((price - prev) / prev * 100, 2) : null, high: num(m.regularMarketDayHigh), low: num(m.regularMarketDayLow), open: null,
+    time: num(m.regularMarketTime) ? new Date(num(m.regularMarketTime) * 1000).toISOString() : '', currency: cat.kind === 'fx' ? '' : cat.kind === 'index' ? '' : 'USD', market: cat.kind,
+  };
+}
+
+/** Yahoo daily candles, oldest first, in the same shape as parseEmKline. */
+export function parseYahooKline(json) {
+  const res = json && json.chart && Array.isArray(json.chart.result) ? json.chart.result[0] : null;
+  if (!res || !Array.isArray(res.timestamp)) return [];
+  const q = (res.indicators && res.indicators.quote && res.indicators.quote[0]) || {};
+  const out = [];
+  res.timestamp.forEach((t, i) => {
+    const close = num(q.close && q.close[i]);
+    if (close === null) return;
+    out.push({ date: new Date(t * 1000).toISOString().slice(0, 10), open: num(q.open && q.open[i]), close, high: num(q.high && q.high[i]), low: num(q.low && q.low[i]), volume: num(q.volume && q.volume[i]) });
+  });
+  return out;
+}
+
 /** Daily candles from push2his: "2026-11-16,open,close,high,low,volume" (fields2 f51..f56). */
 export function parseEmKline(json) {
   const rows = json && json.data && Array.isArray(json.data.klines) ? json.data.klines : [];
