@@ -25,7 +25,7 @@ function landPositions() {
   c.fill();
   const px = c.getImageData(0, 0, W, H).data;
   const out = [];
-  const step = 1.55;
+  const step = 1.05;
   for (let lat = -80; lat <= 84; lat += step) {
     const lonStep = step / Math.max(Math.cos(lat * RAD), 0.15);
     for (let lon = -180; lon < 180; lon += lonStep) {
@@ -44,7 +44,7 @@ const DOT_VERT = `uniform float uSize; varying float vFade;
 void main(){ vec3 n = normalize(normalMatrix * position); vFade = smoothstep(0.0, 0.45, n.z);
   gl_PointSize = uSize; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`;
 const DOT_FRAG = `uniform vec3 uColor; uniform float uAlpha; varying float vFade;
-void main(){ vec2 d = gl_PointCoord - 0.5; if (dot(d,d) > 0.25) discard; gl_FragColor = vec4(uColor, uAlpha * vFade); }`;
+void main(){ float r = length(gl_PointCoord - 0.5); if (r > 0.5) discard; gl_FragColor = vec4(uColor, uAlpha * vFade * smoothstep(0.5, 0.32, r)); }`;
 
 /** Resolve any CSS colour (var(), oklch(), rgb()) to a three.js Color by letting the browser compute it. */
 function makeColorReader(host) {
@@ -78,7 +78,7 @@ export function createGlobe(container, { onSelect }) {
 
   const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   renderer.outputColorSpace = LinearSRGBColorSpace;
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setPixelRatio(Math.min(Math.max(window.devicePixelRatio || 1, 2), 3));
   renderer.domElement.className = 'mkd-gl-canvas';
   container.appendChild(renderer.domElement);
   const labelLayer = document.createElement('div');
@@ -96,7 +96,7 @@ export function createGlobe(container, { onSelect }) {
 
   const landGeo = new BufferGeometry();
   landGeo.setAttribute('position', new BufferAttribute(landPositions(), 3));
-  const landMat = new ShaderMaterial({ vertexShader: DOT_VERT, fragmentShader: DOT_FRAG, transparent: true, depthWrite: false, uniforms: { uColor: { value: new Color() }, uAlpha: { value: 0.75 }, uSize: { value: 2 * renderer.getPixelRatio() } } });
+  const landMat = new ShaderMaterial({ vertexShader: DOT_VERT, fragmentShader: DOT_FRAG, transparent: true, depthWrite: false, uniforms: { uColor: { value: new Color() }, uAlpha: { value: 0.95 }, uSize: { value: 2.4 * renderer.getPixelRatio() } } });
   globe.add(new Points(landGeo, landMat));
 
   const gratMat = new LineBasicMaterial({ transparent: true, opacity: 0.12 });

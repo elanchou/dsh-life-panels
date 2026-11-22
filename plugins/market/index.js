@@ -315,7 +315,7 @@ export function apply(ctx) {
       if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405, { 'content-type': 'text/plain', allow: 'GET, HEAD' }); res.end('GET only'); return; }
       try {
         const body = await fs.readFile(new URL('./vendor/' + name, import.meta.url));
-        res.writeHead(200, { 'content-type': type, 'cache-control': 'private, max-age=86400', 'content-length': body.length });
+        res.writeHead(200, { 'content-type': type, 'cache-control': 'private, no-cache', 'content-length': body.length });
         res.end(req.method === 'HEAD' ? undefined : body);
       } catch (error) { res.writeHead(500, { 'content-type': 'text/plain' }); res.end(errorText(error)); }
     },
